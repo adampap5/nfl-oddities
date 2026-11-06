@@ -1,13 +1,13 @@
 /* NFL Oddities — static site app. Loads data/*.json, computes the analysis, renders the current page. */
 (function () {
   'use strict';
-  const FILES = ['my_teams', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
+  const FILES = ['my_teams', 'fatigue', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
   const D = {};
   const X = {}; // derived data
   const state = {
     route: 'home', playerId: null,
     scoring: load('scoring') || 'PPR',
-    cat: 'fantasy', q: '', pos: '', team: '',
+    cat: 'fantasy', q: '', pos: '', team: '', fhSeason: 'all',
     teams: loadTeams(), active: Number(load('active') || 0), myq: '',
   };
   const fmtN = d3.format(',');
@@ -212,24 +212,12 @@
     const hour = (k) => { const [hm, ap] = k.split(' '); const [hh, mm] = hm.split(':').map(Number); return (hh % 12) + (ap === 'PM' ? 12 : 0) + mm / 60; };
     const clock = (x) => { const hh = Math.floor(((x % 24) + 24) % 24), mm = Math.round((x - Math.floor(x)) * 60); return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`; };
     const fat = [];
-    D.games.filter((g) => g.Week === X.next).forEach((g) => {
-      [[g.Away, g.Home, true, g.AwayRest], [g.Home, g.Away, false, g.HomeRest]].forEach(([team, opp, away, rest]) => {
-        const home = X.site[team], venue = X.site[g.Venue] || X.site[g.Home];
-        const mi = Math.round(miles(home, venue));
-        const zones = venue.HoursFromET - home.HoursFromET;
-        const body = hour(g.Kickoff) + home.HoursFromET;
-        const flags = []; let score = 0;
-        if (!rest || rest >= 10) { flags.push('Off a bye'); score -= 2; }
-        else if (rest <= 4) { flags.push('Short week'); score += 3; }
-        else if (rest <= 6) { flags.push('Six days or less'); score += 1; }
-        score += Math.floor(mi / 1000);
-        if (Math.abs(zones) >= 5) { flags.push('Overseas'); score += 3; }
-        else if (Math.abs(zones) >= 2) { flags.push(`${Math.abs(zones)} time zones`); score += Math.abs(zones) - 1; }
-        if (body < 11.5) { flags.push('Early body clock'); score += 2; }
-        if (venue.ElevationFt >= 5000 && g.Venue !== team) { flags.push('Altitude'); score += 1; }
-        fat.push({ Team: team, Opp: opp, GameId: g.GameId, Where: (away ? '@ ' : 'vs ') + opp + (g.Venue !== g.Home ? ' (' + venue.City.split(',')[0] + ')' : ''),
-          Day: g.Day.split(' ')[0], Kickoff: g.Kickoff, RestDays: rest, Miles: mi, TimeZones: zones, BodyClock: clock(body), Score: score, Flags: flags.join(' · ') || 'None' });
-      });
+    const season = D.meta[0].Season;
+    D.fatigue.filter((r) => r.Season === season && r.Week === X.next).forEach((r) => {
+      const g = D.games.find((x) => x.Week === r.Week && (x.Away === r.Team || x.Home === r.Team));
+      const venue = X.site[r.Venue];
+      fat.push({ Team: r.Team, Opp: r.Opp, GameId: g.GameId, Where: (g.Away === r.Team ? '@ ' : 'vs ') + r.Opp + (r.Site === 'Neutral' ? ' (' + venue.City.split(',')[0] + ')' : ''),
+        Day: g.Day.split(' ')[0], Kickoff: g.Kickoff, RestDays: r.RestDays, Miles: r.Miles, TimeZones: r.TimeZones, BodyClock: clock(r.BodyClock), Score: r.Score, Flags: r.Flags });
     });
     X.fatigue = fat.sort((a, b) => b.Score - a.Score || b.Miles - a.Miles);
     const fby = new Map(X.fatigue.map((r) => [r.Team, r]));
@@ -725,16 +713,17 @@
   }
 
 
-  function groupedBars(el, rows, names) {
+  function groupedBars(el, rows, names, o = {}) {
     el.replaceChildren();
-    const W = el.clientWidth || 600, H = 250, m = { t: 30, r: 6, b: 26, l: 30 };
+    const W = el.clientWidth || 600, H = o.height || 250, m = { t: 30, r: 6, b: 26, l: o.pct ? 40 : 30 };
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
     const x = d3.scaleBand(rows.map((r) => r.label), [m.l, W - m.r]).paddingInner(0.35).paddingOuter(0.1);
     const xi = d3.scaleBand(['a', 'b'], [0, x.bandwidth()]).padding(0.28);
-    const y = d3.scaleLinear([0, d3.max(rows, (r) => Math.max(r.a, r.b)) || 1], [H - m.b, m.t]).nice();
+    const y = d3.scaleLinear(o.domain || [0, d3.max(rows, (r) => Math.max(r.a, r.b)) || 1], [H - m.b, m.t]).nice();
     const g = svg.append('g').style('font-size', '11.5px');
-    y.ticks(4).forEach((v) => { g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', 'var(--cds-chart-grid)'); g.append('text').attr('x', m.l - 8).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').text(v); });
-    const bw = Math.min(10, xi.bandwidth());
+    y.ticks(4).forEach((v) => { g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', 'var(--cds-chart-grid)'); g.append('text').attr('x', m.l - 8).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').text(o.pct ? v + '%' : v); });
+    if (o.ref !== undefined) g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(o.ref)).attr('y2', y(o.ref)).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 4');
+    const bw = Math.min(o.barWidth || 10, xi.bandwidth());
     const pill = g.append('g').style('display', 'none');
     const pr = pill.append('rect').attr('rx', 11).attr('height', 22).attr('fill', 'var(--cds-surface-popover)');
     const pt = pill.append('text').attr('fill', 'var(--cds-popover-ink)').attr('text-anchor', 'middle').attr('dy', '0.32em').style('font-weight', 600);
@@ -745,7 +734,7 @@
         g.append('rect').attr('x', cx - bw / 2).attr('width', bw).attr('y', y(v)).attr('height', Math.max(0, y(0) - y(v))).attr('rx', bw / 2).attr('fill', col)
           .style('cursor', 'default')
           .on('pointerenter', () => {
-            const label = `${v} ${names[i].toLowerCase()}`;
+            const label = o.pct ? `${names[i]}: ${v}%${r.n ? ' of ' + fmtN(r.n) + ' games' : ''}` : `${v} ${names[i].toLowerCase()}`;
             pt.text(label).attr('x', cx).attr('y', y(v) - 20);
             const w = pt.node().getComputedTextLength() + 20;
             pr.attr('x', cx - w / 2).attr('y', y(v) - 31).attr('width', w);
@@ -826,7 +815,59 @@
     rr.append('rect').attr('x', (d) => x2(d.Done)).attr('width', (d) => x2(d.Total) - x2(d.Done)).attr('height', bh2).attr('rx', 2).attr('fill', (d) => teamColor(d.Team)).attr('fill-opacity', 0.3);
     rr.append('text').attr('x', (d) => x2(d.Total) + 6).attr('y', bh2 / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => fmtN(d.Total));
     rr.on('pointermove', (ev, d) => tp2.show(ev, X.team[d.Team].Name, [`${fmtN(d.Done)} miles so far`, `${fmtN(d.Left)} still to come`, `${d.Trips} road trips`])).on('pointerleave', () => tp2.hide());
+    renderFatigueHistory();
   }
+  function fhSummary(rows) {
+    const n = rows.length;
+    if (!n) return { n: 0, Win: null, Cover: null, Margin: null };
+    const ats = rows.filter((r) => r.Covered !== null && r.Covered !== undefined);
+    return { n, Win: Math.round((d3.sum(rows, (r) => r.Win) / n) * 1000) / 10, Cover: ats.length ? Math.round((d3.sum(ats, (r) => r.Covered) / ats.length) * 1000) / 10 : null,
+      Margin: Math.round(d3.mean(rows, (r) => r.Margin) * 10) / 10 };
+  }
+  function renderFatigueHistory() {
+    const seasons = [...new Set(D.fatigue.map((r) => r.Season))].sort((a, b) => b - a);
+    const sel = $('fh-season');
+    if (!sel.options.length) {
+      sel.append(h('option', { value: 'all' }, `All seasons (${d3.min(seasons)}–${d3.max(seasons)})`), ...seasons.map((y) => h('option', { value: String(y) }, `${y} season`)));
+      sel.addEventListener('change', () => { state.fhSeason = sel.value; renderFatigueHistory(); });
+    }
+    sel.value = state.fhSeason;
+    const fin = D.fatigue.filter((r) => r.Status === 'Final' && (state.fhSeason === 'all' || String(r.Season) === state.fhSeason));
+    $('fh-sample').textContent = `${fmtN(fin.length / 2)} games, ${fmtN(fin.length)} team results. Small groups swing a lot, so lean on the big ones.`;
+    const pct = (v) => (v === null ? '—' : v.toFixed(1) + '%');
+    const rested = fhSummary(fin.filter((r) => r.Score <= -2)), tired = fhSummary(fin.filter((r) => r.Score >= 4));
+    const fresh = fhSummary(fin.filter((r) => r.Edge >= 2)), base = fhSummary(fin);
+    $('fh-tiles').replaceChildren(
+      tile('Win rate, rested teams (score −2 or less)', pct(rested.Win), `${fmtN(rested.n)} games · covered ${pct(rested.Cover)}`, { icon: 'moon', dark: true }),
+      tile('Win rate, worn-down teams (score 4+)', pct(tired.Win), `${fmtN(tired.n)} games · covered ${pct(tired.Cover)}`, { icon: 'fire' }),
+      tile('Fresher by 2+ points: covered the spread', pct(fresh.Cover), `${fmtN(fresh.n)} games · won ${pct(fresh.Win)}`, { icon: 'gauge' }),
+      tile('Average margin, rested vs worn down', `${signed(rested.Margin)} / ${signed(tired.Margin)}`, 'Points per game', { icon: 'layers' }),
+    );
+    const groups = (defs, key) => defs.map(([label, f]) => ({ label, ...fhSummary(fin.filter((r) => f(r[key]))) }));
+    const byScore = groups([['−2 or less', (v) => v <= -2], ['0 to 1', (v) => v >= -1 && v <= 1], ['2 to 3', (v) => v >= 2 && v <= 3], ['4 to 5', (v) => v >= 4 && v <= 5], ['6+', (v) => v >= 6]], 'Score');
+    const byEdge = groups([['Tired by 3+', (v) => v <= -3], ['Tired by 1–2', (v) => v >= -2 && v <= -1], ['Even', (v) => v === 0], ['Fresher by 1–2', (v) => v >= 1 && v <= 2], ['Fresher by 3+', (v) => v >= 3]], 'Edge');
+    const chart = (id, rows) => groupedBars($(id), rows.filter((r) => r.n).map((r) => ({ label: r.label, a: r.Win, b: r.Cover ?? 0, n: r.n })), ['Win %', 'Covered %'], { pct: true, domain: [0, 80], ref: 50, height: 230, barWidth: 16 });
+    chart('fh-score-chart', byScore);
+    chart('fh-edge-chart', byEdge);
+    const cols = (first) => [{ k: 'label', h: first, l: true }, { k: 'n', h: 'Games', f: fmtN }, { k: 'Win', h: 'Win %', f: pct, cls: (v) => (v >= 55 ? 'nfl-good' : v <= 45 ? 'nfl-bad' : '') },
+      { k: 'Cover', h: 'Cover %', f: pct, cls: (v) => (v >= 55 ? 'nfl-good' : v <= 45 ? 'nfl-bad' : '') }, { k: 'Margin', h: 'Margin', f: signed, cls: (v) => (v > 0 ? 'nfl-good' : v < 0 ? 'nfl-bad' : '') }];
+    table($('fh-score-table'), byScore, cols('Fatigue score'), { sortable: false });
+    table($('fh-edge-table'), byEdge, cols('Edge'), { sortable: false });
+    const factors = [['Off a bye', /Off a bye/], ['Short week (4 days or less)', /Short week/], ['Six days or less', /Six days/], ['Early body clock (before 11:30 home time)', /Early body clock/],
+      ['2+ time zones', /time zones/], ['Overseas', /Overseas/], ['Altitude', /Altitude/], ['1,500+ miles from home', null]];
+    const facRows = factors.map(([label, re]) => ({ label, ...fhSummary(fin.filter((r) => (re ? re.test(r.Flags) : r.Miles >= 1500))) })).concat([{ label: 'All games (baseline)', ...base }]);
+    table($('fh-factor-table'), facRows, cols('Factor'), { sortable: false });
+    const teams = D.teams.map((t) => {
+      const mine = fin.filter((r) => r.Team === t.Team);
+      const tough = fhSummary(mine.filter((r) => r.Score >= 3)), fresher = fhSummary(mine.filter((r) => r.Edge >= 1));
+      const rec = (rows) => { const w = d3.sum(rows, (r) => r.Win === 1), l = d3.sum(rows, (r) => r.Win === 0); return rows.length ? `${w}-${l}` : '—'; };
+      return { Team: t.Team, AvgScore: Math.round(d3.mean(mine, (r) => r.Score) * 100) / 100, Tough: tough.n, ToughRec: rec(mine.filter((r) => r.Score >= 3)), ToughWin: tough.Win,
+        Fresher: fresher.n, FresherRec: rec(mine.filter((r) => r.Edge >= 1)), FresherWin: fresher.Win };
+    });
+    table($('fh-team-table'), teams, [C.team, { k: 'AvgScore', h: 'Avg fatigue', f: (v) => v.toFixed(2) }, { k: 'ToughRec', h: 'Record when tired', v: (r) => r.ToughWin ?? -1 }, { k: 'Tough', h: 'Games', sm: true },
+      { k: 'FresherRec', h: 'Record when fresher', v: (r) => r.FresherWin ?? -1 }, { k: 'Fresher', h: 'Games', sm: true }], { sort: 'ToughRec' });
+  }
+
 
   // ---------- REFS ----------
   function renderRefs() {

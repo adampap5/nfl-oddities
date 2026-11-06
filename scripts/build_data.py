@@ -27,12 +27,15 @@ FIX = {"LA": "LAR", "WAS": "WSH"}  # match ESPN-style codes used across the site
 OFFENSE = {"QB", "RB", "WR", "TE", "FB"}
 
 # Neutral-site stadiums: nflverse stadium name fragment -> site code in data/stadiums.json
-NEUTRAL = [("Melbourne", "MEL"), ("Maracana", "RIO"), ("Tottenham", "LON"), ("Wembley", "LON"),
+NEUTRAL = [("Ford Field", "DET"), ("Corinthians", "SAO"), ("Deutsche Bank", "FRA"), ("Allianz", "MUN"), ("Melbourne", "MEL"), ("Maracana", "RIO"), ("Tottenham", "LON"), ("Wembley", "LON"),
            ("Stade de France", "PAR"), ("Bernabeu", "MAD"), ("Munich", "MUN"), ("Banorte", "MEX"),
            ("Azteca", "MEX"), ("Croke", "DUB"), ("Berlin", "BER"), ("Olympiastadion", "BER")]
 
 
-CITY = {"MEL": "Melbourne", "RIO": "Rio de Janeiro", "LON": "London", "PAR": "Paris", "MAD": "Madrid", "MUN": "Munich",
+# 2025's international games carry the home team's own stadium name in nflverse, so they're mapped by home team.
+NEUTRAL_2025 = {"LAC": "SAO", "PIT": "DUB", "CLE": "LON", "NYJ": "LON", "JAX": "LON", "IND": "BER", "MIA": "MAD"}
+FATIGUE_SEASONS = range(2022, 2027)
+CITY = {"SAO": "Sao Paulo", "FRA": "Frankfurt", "MEL": "Melbourne", "RIO": "Rio de Janeiro", "LON": "London", "PAR": "Paris", "MAD": "Madrid", "MUN": "Munich",
         "MEX": "Mexico City", "DUB": "Dublin", "BER": "Berlin"}
 
 
@@ -102,6 +105,100 @@ def pa_points(pa):
     return -5
 
 
+# ---- fatigue: the same scoring the site explains on its Fatigue & travel page
+def dst_end(year):
+    d = dt.date(year, 11, 1)
+    return d + dt.timedelta(days=(6 - d.weekday()) % 7)  # first Sunday of November
+
+
+def site_offset(site, code, day):
+    off = site["HoursFromET"]
+    if code == "ARI" and day < dst_end(day.year):
+        off = -3  # Arizona skips daylight saving time
+    return off
+
+
+def miles(a, b):
+    from math import radians, sin, cos, asin, sqrt
+    dlat, dlon = radians(b["Lat"] - a["Lat"]), radians(b["Lon"] - a["Lon"])
+    q = sin(dlat / 2) ** 2 + cos(radians(a["Lat"])) * cos(radians(b["Lat"])) * sin(dlon / 2) ** 2
+    return 3959 * 2 * asin(sqrt(q))
+
+
+def fatigue_rows(all_games, stadiums):
+    site = {x["Site"]: x for x in stadiums}
+    out = []
+    for g in all_games:
+        season = int(g["season"])
+        if g["game_type"] != "REG" or season not in FATIGUE_SEASONS:
+            continue
+        away, home = t(g["away_team"]), t(g["home_team"])
+        venue = home
+        if g["location"] != "Home":
+            venue = None
+            if season == 2025:
+                venue = NEUTRAL_2025.get(home)
+            else:
+                for frag, code in NEUTRAL:
+                    if frag.lower() in g["stadium"].lower():
+                        venue = code
+                        break
+            if not venue or venue not in site:
+                continue
+        day = dt.date.fromisoformat(g["gameday"])
+        hh, mm = map(int, g["gametime"].split(":"))
+        final = g["home_score"] not in ("", "NA")
+        spread = f(g["spread_line"]) if g["spread_line"] not in ("", "NA") else None
+        sides = []
+        for team, opp, is_away, rest in [(away, home, True, g["away_rest"]), (home, away, False, g["home_rest"])]:
+            if team not in site:
+                break
+            rest = int(f(rest)) or None
+            h_site, v_site = site[team], site[venue]
+            mi = round(miles(h_site, v_site))
+            home_off = site_offset(h_site, team, day)
+            zones = site_offset(v_site, venue, day) - home_off
+            body = hh + mm / 60 + home_off
+            score, flags = 0, []
+            if not rest or rest >= 10:
+                score -= 2; flags.append("Off a bye")
+            elif rest <= 4:
+                score += 3; flags.append("Short week")
+            elif rest <= 6:
+                score += 1; flags.append("Six days or less")
+            score += mi // 1000
+            if abs(zones) >= 5:
+                score += 3; flags.append("Overseas")
+            elif abs(zones) >= 2:
+                score += abs(zones) - 1; flags.append(f"{abs(zones)} time zones")
+            if body < 11.5:
+                score += 2; flags.append("Early body clock")
+            if v_site["ElevationFt"] >= 5000 and venue != team:
+                score += 1; flags.append("Altitude")
+            pf = int(g["away_score" if is_away else "home_score"]) if final else None
+            pa = int(g["home_score" if is_away else "away_score"]) if final else None
+            # nflverse spread_line: positive = home favored by that many
+            line = None if spread is None else (spread if is_away else -spread)  # points this team gets (+) or gives (-)
+            covered = None
+            if final and line is not None:
+                m = pf - pa + line
+                covered = 1 if m > 0 else 0 if m < 0 else 0.5
+            sides.append({"Season": season, "Week": int(g["week"]), "Date": g["gameday"], "Team": team, "Opp": opp,
+                          "Site": "Away" if is_away and venue == opp else "Home" if venue == team else "Neutral", "Venue": venue,
+                          "RestDays": rest, "Miles": mi, "TimeZones": zones, "BodyClock": round(body, 2), "Score": score,
+                          "Flags": " · ".join(flags) or "None", "PF": pf, "PA": pa, "Line": line, "Covered": covered,
+                          "Status": "Final" if final else "Upcoming"})
+        if len(sides) == 2:
+            sides[0]["OppScore"], sides[1]["OppScore"] = sides[1]["Score"], sides[0]["Score"]
+            for x in sides:
+                x["Edge"] = x["OppScore"] - x["Score"]  # positive = this team is fresher
+                if x["PF"] is not None:
+                    x["Margin"] = x["PF"] - x["PA"]
+                    x["Win"] = 1 if x["Margin"] > 0 else 0 if x["Margin"] < 0 else 0.5
+            out.extend(sides)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=2026)
@@ -111,7 +208,8 @@ def main():
     season = a.season
 
     stats = [r for r in rows(fetch(f"stats_player/stats_player_week_{season}.csv", a.cache)) if r["season_type"] == "REG"]
-    sched = [g for g in rows(fetch("schedules/games.csv", a.cache)) if g["season"] == str(season) and g["game_type"] == "REG"]
+    all_games = rows(fetch("schedules/games.csv", a.cache))
+    sched = [g for g in all_games if g["season"] == str(season) and g["game_type"] == "REG"]
     teams_raw = rows(fetch("teams/teams_colors_logos.csv", a.cache))
 
     # ---- teams
@@ -284,8 +382,11 @@ def main():
     meta = {"Season": season, "ThroughWeek": through, "BuiltAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "Players": len(players)}
 
+    stadiums = json.load(open(os.path.join(a.out, "stadiums.json"), encoding="utf-8"))
+    fatigue = fatigue_rows(all_games, stadiums)
+
     os.makedirs(a.out, exist_ok=True)
-    for name, data in [("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta])]:
+    for name, data in [("fatigue", fatigue), ("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta])]:
         with open(os.path.join(a.out, f"{name}.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh, separators=(",", ":"))
         print(f"{name}.json: {len(data)} rows")

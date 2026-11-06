@@ -180,6 +180,39 @@
       <p class="nfl-note">Body clock is the kickoff time back home. Miles are straight-line from the team's stadium.</p>
       <div class="nfl-scroll" id="fatigue-table"></div>
     </div>
+    <h2 class="nfl-h2" id="fatigue-history">Does fatigue actually matter?</h2>
+    <div class="nfl-controls" style="margin-bottom: 14px">
+      <select class="dash-select" id="fh-season" aria-label="Seasons"></select>
+      <span class="nfl-note" id="fh-sample" style="margin:0"></span>
+    </div>
+    <div class="nfl-tiles" id="fh-tiles"></div>
+    <div class="nfl-grid wide">
+      <div class="nfl-card">
+        <div class="nfl-card-head"><h3>Results by fatigue score</h3><div class="nfl-legend"><span><i style="background: var(--accent)"></i>Win %</span><span><i style="background: var(--accent-2)"></i>Covered the spread %</span></div></div>
+        <p class="nfl-note">Every regular-season game scored the same way as this week's. Dashed line is 50%. Scores of 6+ are mostly international games where both teams make the same trip, so the edge chart beside this one is the fairer test.</p>
+        <div class="nfl-chart" id="fh-score-chart" style="min-height: 16rem"></div>
+        <div id="fh-score-table"></div>
+      </div>
+      <div class="nfl-card">
+        <div class="nfl-card-head"><h3>Results by rest-and-travel edge</h3><div class="nfl-legend"><span><i style="background: var(--accent)"></i>Win %</span><span><i style="background: var(--accent-2)"></i>Covered %</span></div></div>
+        <p class="nfl-note">Edge is the opponent's fatigue score minus the team's own, so positive means the team was fresher.</p>
+        <div class="nfl-chart" id="fh-edge-chart" style="min-height: 16rem"></div>
+        <div id="fh-edge-table"></div>
+      </div>
+    </div>
+    <div class="nfl-grid wide">
+      <div class="nfl-card">
+        <h3>Which factors hurt most</h3>
+        <p class="nfl-note">Every game where a team had each factor, regardless of the others. Margin is average points scored minus allowed. Short weeks look neutral because both teams on a Thursday night usually have one.</p>
+        <div id="fh-factor-table"></div>
+      </div>
+      <div class="nfl-card">
+        <h3>Teams in tough spots</h3>
+        <p class="nfl-note">Each team's record when its fatigue score was 3 or higher, and when it was the fresher side, for the seasons picked above.</p>
+        <div class="nfl-scroll" id="fh-team-table"></div>
+      </div>
+    </div>
+
     <details>
       <summary>How the fatigue score works</summary>
       <dl>
@@ -248,6 +281,6 @@
   </main>
 </div>
 </div>
-<script src="assets/app.js?v=06ebf8f920"></script>
+<script src="assets/app.js?v=a9c7f53490"></script>
 </body>
 </html>
