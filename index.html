@@ -85,15 +85,18 @@
 
   <!-- MY TEAM -->
   <section class="nfl-page" id="myteam" hidden>
+    <div class="nfl-teambar">
+      <div class="nfl-seg" id="my-teams" role="tablist" aria-label="Your teams"></div>
+      <button class="nfl-btn" id="my-new" type="button">+ New team</button>
+      <button class="nfl-btn subtle" id="my-rename" type="button">Rename</button>
+      <button class="nfl-btn subtle" id="my-delete" type="button">Delete team</button>
+      <button class="nfl-btn" id="my-copy" type="button">Copy link</button>
+      <span class="nfl-note" id="my-msg" style="margin:0"></span>
+    </div>
     <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
       <h3>Add players</h3>
-      <p class="nfl-note">Search your players and tap to add them. Your roster is saved only in this browser. Use "Copy link" to open it on another device.</p>
-      <div class="nfl-controls" style="margin-bottom: 0">
-        <input class="nfl-search" id="my-search" type="search" placeholder="Add a player, e.g. Jahmyr Gibbs" aria-label="Add a player" autocomplete="off">
-        <button class="nfl-btn" id="my-copy" type="button">Copy link</button>
-        <button class="nfl-btn subtle" id="my-clear" type="button">Clear roster</button>
-        <span class="nfl-note" id="my-msg" style="margin:0"></span>
-      </div>
+      <p class="nfl-note">New players land on the bench; change the slot from the table. Your teams are saved only in this browser. "Copy link" opens all of them on another device.</p>
+      <input class="nfl-search" id="my-search" type="search" placeholder="Add a player, e.g. Jahmyr Gibbs" aria-label="Add a player" autocomplete="off" style="max-width: 28rem; width: 100%">
       <div class="nfl-results" id="my-results" hidden style="margin: var(--cds-gap-sm) 0 0"></div>
     </div>
     <div id="my-body"></div>

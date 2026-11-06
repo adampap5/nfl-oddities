@@ -8,11 +8,16 @@
     route: 'home', playerId: null,
     scoring: load('scoring') || 'PPR',
     cat: 'fantasy', q: '', pos: '', team: '',
-    roster: (load('roster') || '').split(',').filter(Boolean), myq: '',
+    teams: loadTeams(), active: Number(load('active') || 0), myq: '',
   };
   const fmtN = d3.format(',');
   const COLORS = ['#c96442', '#3f7cac', '#6a9a4f', '#a3639e', '#d39a2c', '#4a9a96'];
 
+  function loadTeams() {
+    try { const t = JSON.parse(localStorage.getItem('nfl-teams')); if (Array.isArray(t) && t.length) return t; } catch (e) { /* ignore */ }
+    const old = (load('roster') || '').split(',').filter(Boolean);
+    return [{ name: 'My team', players: old.map((id) => ({ id, slot: 'Bench' })) }];
+  }
   function load(k) { try { return localStorage.getItem('nfl-' + k); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem('nfl-' + k, v); } catch (e) { /* ignore */ } }
 
@@ -325,11 +330,33 @@
 
   // ---------- MY TEAM ----------
   const POS_ORDER = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
+  const SLOTS = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'D/ST', 'K', 'Bench', 'IR'];
+  const SLOT_FITS = { QB: ['QB'], RB: ['RB'], WR: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], 'D/ST': ['DST'], K: ['K'] };
   const START_LINE = { QB: 12, RB: 24, WR: 30, TE: 12, K: 12, DST: 12 };
-  function saveRoster() { state.roster = [...new Set(state.roster)].filter((id) => X.player[id]); save('roster', state.roster.join(',')); }
-  function implied(g, team) {
+  const team = () => state.teams[Math.min(state.active, state.teams.length - 1)];
+  function saveTeams() {
+    state.teams.forEach((t) => { const seen = new Set(); t.players = t.players.filter((x) => X.player[x.id] && !seen.has(x.id) && seen.add(x.id)); });
+    if (state.active >= state.teams.length) state.active = 0;
+    save('teams', JSON.stringify(state.teams)); save('active', String(state.active));
+  }
+  const b64 = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const unb64 = (str) => decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/'))));
+  function importTeams(code) {
+    try {
+      const arr = JSON.parse(unb64(code));
+      arr.forEach((t) => {
+        const players = (t.p || []).map(([id, slot]) => ({ id, slot: SLOTS.includes(slot) ? slot : 'Bench' })).filter((x) => X.player[x.id]);
+        const i = state.teams.findIndex((x) => x.name === t.n);
+        if (i >= 0) state.teams[i].players = players; else state.teams.push({ name: t.n || 'Team', players });
+      });
+      state.teams = state.teams.filter((t) => t.players.length || state.teams.length === 1);
+      saveTeams();
+      return true;
+    } catch (e) { console.error(e); return false; }
+  }
+  function implied(g, tm) {
     if (!g || g.Total === null || g.Spread === null || !g.Favorite) return null;
-    const fav = g.Favorite === team ? 1 : g.Favorite === 'Pick' ? 0 : -1;
+    const fav = g.Favorite === tm ? 1 : g.Favorite === 'Pick' ? 0 : -1;
     return Math.round(((g.Total + fav * g.Spread) / 2) * 10) / 10;
   }
   function outlook(p) {
@@ -342,7 +369,7 @@
     const tags = [];
     let adj = 0;
     const tag = (cls, text, w) => { tags.push([cls, text]); adj += w; };
-    if (!g) return { p, g: null, per, l3, tags: [['bad', 'On bye']], verdict: 'On bye', rank: null, it: null, fat: null, sortKey: -1 };
+    if (!g) return { p, g: null, per, l3, tags: [['bad', 'On bye']], verdict: 'On bye', rank: null, it: null, fat: null, sortKey: 999, est: 0 };
     const it = implied(g, p.Team);
     const wp = g.Away === p.Team ? g.AwayWinProb : g.HomeWinProb;
     const fat = X.fatigueBy.get(p.Team);
@@ -369,74 +396,117 @@
       if (l3 >= per * 1.2) tag('good', 'Hot lately', 0.5);
       else if (l3 <= per * 0.8) tag('warn', 'Cooling off', -0.5);
     }
-    if (p.Pos !== 'K' && p.Pos !== 'DST' && weeks.length >= 4) {
-      const touches = (w) => (w.Targets || 0) + (w.Carries || 0) + (p.Pos === 'QB' ? 0 : 0);
-      if (p.Pos !== 'QB') {
-        const u3 = d3.mean(l3w, touches), uAll = d3.mean(weeks, touches);
-        if (uAll >= 4 && u3 >= uAll * 1.2) tag('good', 'Usage rising', 0.5);
-        else if (uAll >= 4 && u3 <= uAll * 0.75) tag('bad', 'Usage falling', -0.5);
-      }
+    if (p.Pos !== 'K' && p.Pos !== 'DST' && p.Pos !== 'QB' && weeks.length >= 4) {
+      const touches = (w) => (w.Targets || 0) + (w.Carries || 0);
+      const u3 = d3.mean(l3w, touches), uAll = d3.mean(weeks, touches);
+      if (uAll >= 4 && u3 >= uAll * 1.2) tag('good', 'Usage rising', 0.5);
+      else if (uAll >= 4 && u3 <= uAll * 0.75) tag('bad', 'Usage falling', -0.5);
     }
-    const luck = X.tdLuck.filter((r) => r.Id === p.Id);
-    const gap = d3.sum(luck, (r) => r.Gap);
+    const lastWeek = weeks.length ? weeks[weeks.length - 1].Week : 0;
+    if (X.through - lastWeek >= 2 && X.gameOf.has(p.Team + '|' + X.through)) tag('bad', `Hasn’t played since Week ${lastWeek}`, -2);
+    const gap = d3.sum(X.tdLuck.filter((r) => r.Id === p.Id), (r) => r.Gap);
     if (gap >= 2.5) tag('warn', 'TD-lucky so far', 0);
     else if (gap <= -2) tag('good', 'Due for TDs', 0.5);
-    // rank by per-game points at his position (3+ games), then nudge by the signals
-    const pool = D.players.filter((q) => q.Pos === p.Pos && q.GP >= 3).sort((a, b) => b[ppg()] - a[ppg()]);
-    const rank = pool.findIndex((q) => q.Id === p.Id) + 1 || pool.length;
+    // rank among regulars (3+ games) at his position; he's always ranked, even with fewer games
+    const rank = 1 + D.players.filter((q) => q.Pos === p.Pos && q.GP >= 3 && q.Id !== p.Id && q[ppg()] > p[ppg()]).length;
+    if (p.GP < 3) tag('muted', `Only ${p.GP} games played`, 0);
     const line = START_LINE[p.Pos] || 12;
     const eff = rank - adj * (line / 6);
     const verdict = eff <= line * 0.4 ? 'Must start' : eff <= line ? 'Start' : eff <= line * 1.4 ? 'Flex / borderline' : 'Bench';
-    return { p, g, per, l3, tags, verdict, rank, it, fat, sortKey: eff };
+    const est = Math.max(0, Math.round((0.6 * per + 0.4 * (l3 ?? per)) * (1 + 0.06 * adj) * 10) / 10);
+    return { p, g, per, l3, tags, verdict, rank, it, fat, sortKey: eff, est };
+  }
+  function lineupSwaps(rows) {
+    const starters = rows.filter((r) => SLOT_FITS[r.slot]);
+    const bench = rows.filter((r) => r.slot === 'Bench' && r.g);
+    const used = new Set(), out = [];
+    [...starters].sort((a, b) => a.est - b.est).forEach((s) => {
+      const fits = SLOT_FITS[s.slot];
+      const best = d3.greatest(bench.filter((b) => !used.has(b.p.Id) && fits.includes(b.p.Pos)), (b) => b.est);
+      if (best && (!s.g || best.est - s.est >= 2)) { used.add(best.p.Id); out.push({ start: best, sit: s }); }
+      else if (!s.g) out.push({ start: null, sit: s });
+    });
+    return out;
+  }
+  function renderTeamBar() {
+    const bar = $('my-teams');
+    bar.replaceChildren(...state.teams.map((t, i) => h('button', { 'aria-pressed': String(i === state.active), onclick: () => { state.active = i; saveTeams(); renderMyTeam(); } }, t.name)));
+    $('my-delete').hidden = state.teams.length < 2;
   }
   function renderMyTeam() {
-    saveRoster();
+    saveTeams();
+    renderTeamBar();
+    const t = team();
     const res = $('my-results');
     const q = state.myq.toLowerCase();
     if (q) {
       const hits = D.players.filter((p) => p.Player.toLowerCase().includes(q)).slice(0, 12);
       res.hidden = false;
       res.replaceChildren(hits.length ? h('ul', null, hits.map((p) => {
-        const on = state.roster.includes(p.Id);
-        return h('li', null, h('a', { href: '#myteam', onclick: (e) => { e.preventDefault(); if (!on) state.roster.push(p.Id); state.myq = ''; $('my-search').value = ''; renderMyTeam(); $('my-search').focus(); } },
-          chip(p.Team), h('span', { class: 'nfl-plink' }, p.Player), h('span', { class: 'meta' }, on ? 'On your team' : `${p.Pos} · ${one(p[ppg()])}/g`)));
+        const on = t.players.some((x) => x.id === p.Id);
+        return h('li', null, h('a', { href: '#myteam', onclick: (e) => { e.preventDefault(); if (!on) t.players.push({ id: p.Id, slot: 'Bench' }); state.myq = ''; $('my-search').value = ''; renderMyTeam(); $('my-search').focus(); } },
+          chip(p.Team), h('span', { class: 'nfl-plink' }, p.Player), h('span', { class: 'meta' }, on ? 'On this team' : `${p.Pos} · ${one(p[ppg()])}/g`)));
       })) : h('p', { class: 'nfl-empty' }, 'No player matches that search.'));
     } else res.hidden = true;
 
     const body = $('my-body');
-    if (!state.roster.length) {
-      body.replaceChildren(h('div', { class: 'nfl-card' }, h('h3', null, 'Your roster is empty'), h('p', { class: 'nfl-note' }, 'Add your players above. Each one gets a start/sit lean for this week built from his scoring pace, the betting outlook for his team, rest and travel, recent form, usage trend and touchdown luck.')));
+    if (!t.players.length) {
+      body.replaceChildren(h('div', { class: 'nfl-card' }, h('h3', null, `${t.name} is empty`), h('p', { class: 'nfl-note' }, 'Add your players above. Each one gets a start/sit lean for this week from his scoring pace, the betting outlook for his team, rest and travel, recent form, usage trend and touchdown luck.')));
       return;
     }
-    const rows = state.roster.map((id) => outlook(X.player[id])).sort((a, b) => POS_ORDER.indexOf(a.p.Pos) - POS_ORDER.indexOf(b.p.Pos) || a.sortKey - b.sortKey);
-    const byes = rows.filter((r) => !r.g);
-    const hot = d3.greatest(rows.filter((r) => r.l3 !== null), (r) => r.l3 - r.per);
-    const total = d3.sum(rows, (r) => r.per);
-    const tile = (lbl, big, who, team) => h('div', { class: 'nfl-tile', style: team ? { '--tc': teamColor(team) } : null }, h('div', { class: 'lbl' }, lbl), h('div', { class: 'big' }, big), h('div', { class: 'who' }, who));
+    const slotOrder = (s) => SLOTS.indexOf(s);
+    const rows = t.players.map((x) => ({ ...outlook(X.player[x.id]), slot: x.slot }))
+      .sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot) || (a.slot === 'Bench' ? POS_ORDER.indexOf(a.p.Pos) - POS_ORDER.indexOf(b.p.Pos) || b.est - a.est : 0));
+    const starters = rows.filter((r) => SLOT_FITS[r.slot]);
+    const swaps = lineupSwaps(rows);
+    const byes = starters.filter((r) => !r.g);
+    const startEst = d3.sum(starters, (r) => r.est);
+    const best = startEst + d3.sum(swaps.filter((s) => s.start), (s) => s.start.est - s.sit.est);
+    // players on more than one of your teams
+    const count = new Map();
+    state.teams.forEach((tt) => tt.players.forEach((x) => count.set(x.id, (count.get(x.id) || 0) + 1)));
+    const shared = [...count].filter(([, n]) => n > 1 && state.teams.length > 1).sort((a, b) => b[1] - a[1]);
+    const tile = (lbl, big, who, tc) => h('div', { class: 'nfl-tile', style: tc ? { '--tc': teamColor(tc) } : null }, h('div', { class: 'lbl' }, lbl), h('div', { class: 'big' }, big), h('div', { class: 'who' }, who));
     const verdictCls = (v) => ({ 'Must start': 'nfl-good', Start: 'nfl-good', 'Flex / borderline': 'nfl-warn', Bench: 'nfl-bad', 'On bye': 'nfl-bad' }[v]);
     const nextTxt = (r) => {
       if (!r.g) return 'BYE';
       const away = r.g.Away === r.p.Team;
       return `${away ? '@' : 'vs'} ${away ? r.g.Home : r.g.Away} · ${r.g.Day.split(' ')[0]} ${r.g.Kickoff}`;
     };
-    const tbl = h('div', { class: 'nfl-scroll tall' });
+    const swapCard = h('div', { class: 'nfl-card', style: { marginBottom: 'var(--cds-gap-md)' } }, h('h3', null, 'Lineup check'),
+      h('p', { class: 'nfl-note' }, 'Bench players who look better than a starter in the same slot this week (by 2+ estimated points), and any starter on bye. Injury news isn’t in this data, so check ESPN’s Q/O tags before you lock it in.'),
+      swaps.length ? h('ul', { class: 'nfl-swaps' }, swaps.map((s) => h('li', null,
+        s.start ? [h('b', null, 'Start '), plink(s.start.p), ` (${one(s.start.est)})`, h('b', null, ' over '), plink(s.sit.p), ` (${s.sit.g ? one(s.sit.est) : 'bye'}) at ${s.sit.slot}`,
+          h('span', { class: 'why' }, s.start.tags.filter(([c]) => c === 'good').map(([, x]) => x).slice(0, 2).join(', '))]
+          : [h('b', { class: 'nfl-bad' }, `${s.sit.slot}: `), plink(s.sit.p), ' is on bye and you have no healthy bench player for that slot.'])))
+        : h('p', { class: 'nfl-ok-line' }, '✓ Your starters look right. No bench player clearly beats one this week.'));
+    const tbl = h('div', { style: { overflowX: 'auto' } });
     body.replaceChildren(
       h('div', { class: 'nfl-tiles' },
-        tile('Players on your team', rows.length, `${POS_ORDER.map((ps) => [ps, rows.filter((r) => r.p.Pos === ps).length]).filter(([, n]) => n).map(([ps, n]) => n + ' ' + ps).join(' · ')}`),
-        tile(`On bye in Week ${X.next}`, byes.length, byes.length ? byes.map((r) => r.p.Player).join(', ') : 'Nobody'),
-        hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), hot.p.Team) : null,
-        tile(`Roster points per game (${state.scoring === 'PPR' ? 'PPR' : 'half'})`, one(total), 'Sum of every player’s season average')),
-      h('div', { class: 'nfl-card' }, h('h3', null, `Week ${X.next} start/sit leans`), h('p', { class: 'nfl-note' }, 'Grouped by position, best lean first. The lean starts from his per-game rank at his position and moves with the signals. It’s a guide, not a projection.'), tbl));
-    table(tbl, rows.map((r) => ({ ...r, Id: r.p.Id, Player: r.p.Player, Team: r.p.Team, Pos: r.p.Pos, PerGame: Math.round(r.per * 10) / 10, L3: r.l3 === null ? null : Math.round(r.l3 * 10) / 10, Rank: r.rank, Next: nextTxt(r), Verdict: r.verdict, Fat: r.fat ? r.fat.Score : null })), [
+        tile('Starting lineup estimate', one(startEst), swaps.some((s) => s.start) ? `Best possible: ${one(best)}` : 'Already your best lineup'),
+        tile(`Starters on bye, Week ${X.next}`, byes.length, byes.length ? byes.map((r) => r.p.Player).join(', ') : 'Nobody'),
+        (() => { const hot = d3.greatest(rows.filter((r) => r.l3 !== null && r.slot !== 'IR'), (r) => r.l3 - r.per); return hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), hot.p.Team) : null; })(),
+        shared.length ? tile('On more than one of your teams', shared.length, shared.slice(0, 4).map(([id, n]) => `${X.player[id].Player} (${n})`).join(', ')) : null),
+      swapCard,
+      h('div', { class: 'nfl-card' }, h('h3', null, `${t.name}: Week ${X.next} leans`), h('p', { class: 'nfl-note' }, 'Est. is a rough points estimate: his season and last-3 averages, nudged by the signals. The lean compares his per-game rank at his position, nudged the same way.'), tbl));
+    const slotSel = (r) => {
+      const sel = h('select', { class: 'dash-select nfl-slot', 'aria-label': 'Lineup slot for ' + r.p.Player });
+      SLOTS.forEach((s) => sel.append(h('option', { value: s, selected: s === r.slot ? 'selected' : null }, s)));
+      sel.addEventListener('change', () => { const x = t.players.find((y) => y.id === r.p.Id); if (x) x.slot = sel.value; renderMyTeam(); });
+      return sel;
+    };
+    table(tbl, rows.map((r) => ({ ...r, Id: r.p.Id, Player: r.p.Player, Team: r.p.Team, Pos: r.p.Pos, PerGame: Math.round(r.per * 10) / 10, L3: r.l3 === null ? null : Math.round(r.l3 * 10) / 10, Rank: r.rank, Next: nextTxt(r), Verdict: r.slot === 'IR' ? 'IR' : r.verdict, Fat: r.fat ? r.fat.Score : null })), [
+      { k: 'slot', h: 'Slot', l: true, r: slotSel },
       { k: 'Player', h: 'Player', l: true, r: (r) => plink(r) }, C.team, C.pos,
       { k: 'Next', h: `Week ${X.next}`, l: true },
-      { k: 'Verdict', h: 'Lean', l: true, cls: (v) => 'nfl-verdict ' + verdictCls(v) },
-      { k: 'PerGame', h: 'Per game', f: one }, { k: 'L3', h: 'Last 3', f: one, cls: (v, r) => (v === null ? '' : v >= r.PerGame * 1.2 ? 'nfl-good' : v <= r.PerGame * 0.8 ? 'nfl-bad' : '') },
+      { k: 'Verdict', h: 'Lean', l: true, cls: (v) => 'nfl-verdict ' + (verdictCls(v) || '') },
+      { k: 'est', h: 'Est.', f: one }, { k: 'PerGame', h: 'Per game', f: one },
+      { k: 'L3', h: 'Last 3', f: one, cls: (v, r) => (v === null ? '' : v >= r.PerGame * 1.2 ? 'nfl-good' : v <= r.PerGame * 0.8 ? 'nfl-bad' : ''), sm: true },
       { k: 'Rank', h: 'Pos rank', r: (r) => (r.Rank ? r.Pos + r.Rank : '—'), sm: true },
-      { k: 'it', h: 'Team total', f: one, sm: true }, { k: 'Fat', h: 'Fatigue', f: signed, sm: true },
-      { k: 'tags', h: 'Signals', l: true, s: false, r: (r) => h('span', null, r.tags.length ? r.tags.map(([c, t]) => h('span', { class: 'nfl-tag ' + c }, t)) : h('span', { class: 'nfl-note' }, 'Nothing unusual')), cls: () => 'wrap' },
-      { k: 'x', h: '', s: false, r: (r) => h('button', { class: 'nfl-x', title: 'Remove from my team', 'aria-label': 'Remove ' + r.Player, onclick: () => { state.roster = state.roster.filter((id) => id !== r.Id); renderMyTeam(); } }, '×') },
-    ], { sortable: false, group: (r) => ({ QB: 'Quarterbacks', RB: 'Running backs', WR: 'Wide receivers', TE: 'Tight ends', K: 'Kickers', DST: 'Defenses' }[r.Pos]) });
+      { k: 'it', h: 'Team total', f: one, sm: true },
+      { k: 'tags', h: 'Signals', l: true, s: false, r: (r) => h('span', null, r.tags.length ? r.tags.map(([c, x]) => h('span', { class: 'nfl-tag ' + c }, x)) : h('span', { class: 'nfl-note' }, 'Nothing unusual')), cls: () => 'wrap' },
+      { k: 'x', h: '', s: false, r: (r) => h('button', { class: 'nfl-x', title: 'Remove from this team', 'aria-label': 'Remove ' + r.Player, onclick: () => { t.players = t.players.filter((y) => y.id !== r.Id); renderMyTeam(); } }, '×') },
+    ], { sortable: false, group: (r) => (SLOT_FITS[r.slot] ? 'Starters' : r.slot === 'IR' ? 'Injured reserve' : 'Bench') });
   }
 
   // ---------- PLAYER PAGE ----------
@@ -726,8 +796,11 @@
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash.startsWith('player/')) { state.route = 'player'; state.playerId = hash.slice(7); }
     else if (hash.startsWith('myteam/')) {
-      const ids = hash.slice(7).split(',').filter((id) => X.player[id]);
-      if (ids.length) { state.roster = [...new Set([...state.roster, ...ids])]; saveRoster(); }
+      const code = location.hash.slice(8);
+      if (!importTeams(code)) {
+        const ids = decodeURIComponent(code).split(',').filter((id) => X.player[id]);
+        if (ids.length) { team().players.push(...ids.map((id) => ({ id, slot: 'Bench' }))); saveTeams(); }
+      }
       history.replaceState(null, '', '#myteam');
       state.route = 'myteam';
     }
@@ -762,12 +835,19 @@
     $('pos-filter').addEventListener('change', (e) => { state.pos = e.target.value; if (state.pos === 'K') state.cat = 'kicking'; else if (state.pos === 'DST') state.cat = 'defense'; else if (['kicking', 'defense'].includes(state.cat)) state.cat = 'fantasy'; render(); });
     $('team-filter').addEventListener('change', (e) => { state.team = e.target.value; render(); });
     $('my-search').addEventListener('input', (e) => { state.myq = e.target.value.trim(); renderMyTeam(); });
-    $('my-clear').addEventListener('click', () => { if (confirm('Remove every player from your team?')) { state.roster = []; renderMyTeam(); } });
+    $('my-new').addEventListener('click', () => {
+      const name = (prompt('Name for the new team?', `Team ${state.teams.length + 1}`) || '').trim();
+      if (!name) return;
+      state.teams.push({ name, players: [] }); state.active = state.teams.length - 1; renderMyTeam(); $('my-search').focus();
+    });
+    $('my-rename').addEventListener('click', () => { const name = (prompt('Rename this team', team().name) || '').trim(); if (name) { team().name = name; renderMyTeam(); } });
+    $('my-delete').addEventListener('click', () => { if (state.teams.length > 1 && confirm(`Delete ${team().name}?`)) { state.teams.splice(state.active, 1); state.active = 0; renderMyTeam(); } });
     $('my-copy').addEventListener('click', async () => {
-      const url = location.href.split('#')[0] + '#myteam/' + state.roster.join(',');
+      const code = b64(JSON.stringify(state.teams.map((t) => ({ n: t.name, p: t.players.map((x) => [x.id, x.slot]) }))));
+      const url = location.href.split('#')[0] + '#myteam/' + code;
       let ok = false;
       try { await navigator.clipboard.writeText(url); ok = true; } catch (e) { /* fall back below */ }
-      $('my-msg').textContent = ok ? 'Link copied. Open it on another device to load this roster.' : url;
+      $('my-msg').textContent = ok ? 'Link copied. Open it on another device to load all your teams.' : url;
     });
     const tf = $('team-filter');
     D.teams.forEach((t) => tf.append(h('option', { value: t.Team }, `${t.Team} · ${t.Name}`)));
