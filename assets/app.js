@@ -1,7 +1,7 @@
 /* NFL Oddities — static site app. Loads data/*.json, computes the analysis, renders the current page. */
 (function () {
   'use strict';
-  const FILES = ['meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
+  const FILES = ['my_teams', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
   const D = {};
   const X = {}; // derived data
   const state = {
@@ -13,10 +13,13 @@
   const fmtN = d3.format(',');
   const COLORS = ['#c96442', '#3f7cac', '#6a9a4f', '#a3639e', '#d39a2c', '#4a9a96'];
 
+  // Saved teams in this browser win; otherwise the site's default teams (data/my_teams.json) are used.
   function loadTeams() {
-    try { const t = JSON.parse(localStorage.getItem('nfl-teams')); if (Array.isArray(t) && t.length) return t; } catch (e) { /* ignore */ }
-    const old = (load('roster') || '').split(',').filter(Boolean);
-    return [{ name: 'My team', players: old.map((id) => ({ id, slot: 'Bench' })) }];
+    try {
+      const t = JSON.parse(localStorage.getItem('nfl-teams'));
+      if (Array.isArray(t) && t.some((x) => x.players && x.players.length)) return t;
+    } catch (e) { /* ignore */ }
+    return null;
   }
   function load(k) { try { return localStorage.getItem('nfl-' + k); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem('nfl-' + k, v); } catch (e) { /* ignore */ } }
@@ -129,6 +132,8 @@
 
   // ---------- derived data ----------
   function derive() {
+    if (!state.teams) state.teams = JSON.parse(JSON.stringify(D.my_teams || [])).filter((t) => t.players && t.players.length);
+    if (!state.teams.length) state.teams = [{ name: 'My team', players: [] }];
     X.team = Object.fromEntries(D.teams.map((t) => [t.Team, t]));
     X.player = Object.fromEntries(D.players.map((p) => [p.Id, p]));
     X.weekly = d3.group(D.weekly, (w) => w.Id);
@@ -842,6 +847,10 @@
     });
     $('my-rename').addEventListener('click', () => { const name = (prompt('Rename this team', team().name) || '').trim(); if (name) { team().name = name; renderMyTeam(); } });
     $('my-delete').addEventListener('click', () => { if (state.teams.length > 1 && confirm(`Delete ${team().name}?`)) { state.teams.splice(state.active, 1); state.active = 0; renderMyTeam(); } });
+    $('my-reset').addEventListener('click', () => {
+      if (!confirm('Replace the teams in this browser with the teams saved on the site?')) return;
+      state.teams = JSON.parse(JSON.stringify(D.my_teams)); state.active = 0; renderMyTeam();
+    });
     $('my-copy').addEventListener('click', async () => {
       const code = b64(JSON.stringify(state.teams.map((t) => ({ n: t.name, p: t.players.map((x) => [x.id, x.slot]) }))));
       const url = location.href.split('#')[0] + '#myteam/' + code;

@@ -42,6 +42,9 @@ jobs:
             git push
           fi
 
+      - name: Stamp asset versions (forces browsers to load new code)
+        run: python3 scripts/stamp_assets.py
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
