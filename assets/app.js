@@ -1,13 +1,13 @@
 /* NFL Oddities — static site app. Loads data/*.json, computes the analysis, renders the current page. */
 (function () {
   'use strict';
-  const FILES = ['my_teams', 'fatigue', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
+  const FILES = ['my_teams', 'fatigue', 'rest_model', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
   const D = {};
   const X = {}; // derived data
   const state = {
     route: 'home', playerId: null,
     scoring: load('scoring') || 'PPR',
-    cat: 'fantasy', q: '', pos: '', team: '', fhSeason: 'all',
+    cat: 'fantasy', q: '', pos: '', team: '',
     teams: loadTeams(), active: Number(load('active') || 0), myq: '',
   };
   const fmtN = d3.format(',');
@@ -211,33 +211,21 @@
     };
     const hour = (k) => { const [hm, ap] = k.split(' '); const [hh, mm] = hm.split(':').map(Number); return (hh % 12) + (ap === 'PM' ? 12 : 0) + mm / 60; };
     const clock = (x) => { const hh = Math.floor(((x % 24) + 24) % 24), mm = Math.round((x - Math.floor(x)) * 60); return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`; };
-    const fat = [];
     const season = D.meta[0].Season;
-    D.fatigue.filter((r) => r.Season === season && r.Week === X.next).forEach((r) => {
+    X.fatigue = D.fatigue.filter((r) => r.Season === season && r.Week === X.next).map((r) => {
       const g = D.games.find((x) => x.Week === r.Week && (x.Away === r.Team || x.Home === r.Team));
-      const venue = X.site[r.Venue];
-      fat.push({ Team: r.Team, Opp: r.Opp, GameId: g.GameId, Where: (g.Away === r.Team ? '@ ' : 'vs ') + r.Opp + (r.Site === 'Neutral' ? ' (' + venue.City.split(',')[0] + ')' : ''),
-        Day: g.Day.split(' ')[0], Kickoff: g.Kickoff, RestDays: r.RestDays, Miles: r.Miles, TimeZones: r.TimeZones, BodyClock: clock(r.BodyClock), Score: r.Score, Flags: r.Flags });
+      return { ...r, GameId: g.GameId, Day: g.Day.split(' ')[0], Kickoff: g.Kickoff };
     });
-    X.fatigue = fat.sort((a, b) => b.Score - a.Score || b.Miles - a.Miles);
-    const fby = new Map(X.fatigue.map((r) => [r.Team, r]));
-    X.fatigueGames = D.games.filter((g) => g.Week === X.next).map((g) => {
-      const a = fby.get(g.Away).Score, hs = fby.get(g.Home).Score, d = a - hs;
-      return { GameId: g.GameId, Away: g.Away, Home: g.Home, Kickoff: g.Day.split(' ')[0] + ' ' + g.Kickoff, AwayScore: a, HomeScore: hs, Diff: Math.abs(d), Edge: d === 0 ? null : d > 0 ? g.Home : g.Away };
-    }).sort((x, y) => y.Diff - x.Diff);
-    X.fatigueBy = fby;
-    const trav = new Map(D.teams.map((t) => [t.Team, { Team: t.Team, Done: 0, Left: 0, Trips: 0 }]));
-    D.games.forEach((g) => {
-      const venue = X.site[g.Venue] || X.site[g.Home];
-      [g.Away, g.Home].forEach((team) => {
-        if (g.Venue === team) return;
-        const rt = 2 * miles(X.site[team], venue);
-        const r = trav.get(team);
-        r[g.Status === 'Final' ? 'Done' : 'Left'] += rt;
-        r.Trips += 1;
-      });
-    });
-    X.travel = [...trav.values()].map((r) => ({ ...r, Done: Math.round(r.Done), Left: Math.round(r.Left), Total: Math.round(r.Done + r.Left) })).sort((a, b) => b.Total - a.Total);
+    X.fatigueBy = new Map(X.fatigue.map((r) => [r.Team, r]));
+    X.edges = D.games.filter((g) => g.Week === X.next).map((g) => {
+      const a = X.fatigueBy.get(g.Away), hm = X.fatigueBy.get(g.Home);
+      const pts = a ? a.EdgePts : 0;
+      const side = pts > 0 ? a : pts < 0 ? hm : null;
+      const other = side === a ? hm : a;
+      const why = [];
+      [a, hm].forEach((r) => r && r.Reasons.forEach((x) => why.push(`${r.Team}: ${x.toLowerCase()}`)));
+      return { GameId: g.GameId, Away: g.Away, Home: g.Home, When: g.Day.split(' ')[0] + ' ' + g.Kickoff, Team: side ? side.Team : null, Pts: Math.abs(pts), Why: why.join(' · '), Rest: `${a ? a.RestDays ?? '—' : '—'} / ${hm ? hm.RestDays ?? '—' : '—'}` };
+    }).sort((x, y) => y.Pts - x.Pts);
 
     // touchdown luck, usage, sacks
     const sk = D.players.filter((p) => p.Pos !== 'DST' && p.Pos !== 'K');
@@ -256,13 +244,13 @@
     const m = D.meta[0];
     $('asof').textContent = `${m.Season} season · through Week ${X.through}`;
     const first = D.games.filter((g) => g.Week === X.next)[0];
-    const tired = X.fatigue[0];
+    const edge = X.edges.find((e) => e.Team);
     const crew = X.crews[0];
     const take = $('takeaway');
     take.replaceChildren();
     if (first) take.append('Week ', h('b', null, X.next), ' starts with ', h('b', null, `${first.Away} at ${first.Home}`), ` (${first.Day}, ${first.Kickoff}). `);
-    if (tired) take.append('The most travel-worn team this week is ', h('b', null, X.team[tired.Team].Name), ` (${tired.Flags.toLowerCase()}), and `);
-    if (crew) take.append(h('b', null, crew.Referee), "'s crew is throwing the most flags in the league.");
+    if (edge) take.append('Biggest rest edge: ', h('b', null, X.team[edge.Team].Name), ` (+${edge.Pts} pts, ${(X.fatigueBy.get(edge.Team).Reasons[0] || 'rest').split(' (')[0].toLowerCase()}). `);
+    if (crew) take.append(h('b', null, crew.Referee), "'s crew throws the most flags.");
     $('built').textContent = `Stats updated ${d3.utcFormat('%b %-d, %Y')(new Date(m.BuiltAt))} · ${fmtN(m.Players)} players tracked · Built with Claude.`;
     document.querySelectorAll('.nfl-scoring button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scoring === state.scoring)));
     const nt = state.teams.filter((t) => t.players.length).length;
@@ -427,11 +415,8 @@
       if (wp <= 30 && p.Pos === 'RB') tag('warn', 'Likely trailing', -1);
       if (wp <= 30 && (p.Pos === 'WR' || p.Pos === 'TE' || p.Pos === 'QB')) tag('muted', 'Likely throwing late', 0);
     }
-    if (fat) {
-      if (fat.Score >= 4) tag('warn', 'Tough travel spot', -1);
-      else if (fat.Score <= -2) tag('good', 'Rested', 0.5);
-      if (/Short week/.test(fat.Flags)) tag('warn', 'Short week', -0.5);
-    }
+    if (fat && fat.EdgePts >= 2) tag('good', `Rest edge +${fat.EdgePts}`, 0.5);
+    else if (fat && fat.EdgePts <= -2) tag('warn', `Rest disadvantage ${fat.EdgePts}`, -0.5);
     if (l3 !== null && weeks.length >= 4) {
       if (l3 >= per * 1.2) tag('good', 'Hot lately', 0.5);
       else if (l3 <= per * 0.8) tag('warn', 'Cooling off', -0.5);
@@ -510,7 +495,7 @@
     const nextTxt = (r) => {
       if (!r.g) return 'BYE';
       const away = r.g.Away === r.p.Team;
-      return `${away ? '@' : 'vs'} ${away ? r.g.Home : r.g.Away} · ${r.g.Day.split(' ')[0]} ${r.g.Kickoff}`;
+      return `${away ? '@' : 'vs'} ${away ? r.g.Home : r.g.Away}|${r.g.Day.split(' ')[0]} ${r.g.Kickoff}`;
     };
     const swapCard = h('div', { class: 'nfl-card', style: { marginBottom: 'var(--cds-gap-md)' } }, h('h3', null, 'Lineup check'),
       h('p', { class: 'nfl-note' }, 'Bench players who look better than a starter in the same slot this week (by 2+ estimated points), and any starter on bye. Injury news isn’t in this data, so check ESPN’s Q/O tags before you lock it in.'),
@@ -527,22 +512,20 @@
         (() => { const hot = d3.greatest(rows.filter((r) => r.l3 !== null && r.slot !== 'IR'), (r) => r.l3 - r.per); return hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), { icon: 'fire', team: hot.p.Team }) : null; })(),
         shared.length ? tile('On more than one of your teams', shared.length, shared.slice(0, 3).map(([id, n]) => `${X.player[id].Player} (${n})`).join(', '), { icon: 'layers' }) : null),
       swapCard,
-      h('div', { class: 'nfl-card' }, h('h3', null, `${t.name}: Week ${X.next} leans`), h('p', { class: 'nfl-note' }, 'Est. is a rough points estimate: his season and last-3 averages, nudged by the signals. The lean compares his per-game rank at his position, nudged the same way.'), tbl));
+      h('div', { class: 'nfl-card' }, h('h3', null, `${t.name}: Week ${X.next} leans`), h('p', { class: 'nfl-note' }, 'Est. is a rough points estimate from his season and last-3 averages, nudged by the signals.'), tbl));
     const slotSel = (r) => {
       const sel = h('select', { class: 'dash-select nfl-slot', 'aria-label': 'Lineup slot for ' + r.p.Player });
       SLOTS.forEach((s) => sel.append(h('option', { value: s, selected: s === r.slot ? 'selected' : null }, s)));
       sel.addEventListener('change', () => { const x = t.players.find((y) => y.id === r.p.Id); if (x) x.slot = sel.value; renderMyTeam(); });
       return sel;
     };
-    table(tbl, rows.map((r) => ({ ...r, Id: r.p.Id, Player: r.p.Player, Team: r.p.Team, Pos: r.p.Pos, PerGame: Math.round(r.per * 10) / 10, L3: r.l3 === null ? null : Math.round(r.l3 * 10) / 10, Rank: r.rank, Next: nextTxt(r), Verdict: r.slot === 'IR' ? 'IR' : r.verdict, Fat: r.fat ? r.fat.Score : null })), [
+    table(tbl, rows.map((r) => ({ ...r, Id: r.p.Id, Player: r.p.Player, Team: r.p.Team, Pos: r.p.Pos, PerGame: Math.round(r.per * 10) / 10, L3: r.l3 === null ? null : Math.round(r.l3 * 10) / 10, Rank: r.rank, Next: nextTxt(r), Verdict: r.slot === 'IR' ? 'IR' : r.verdict, Fat: r.fat ? r.fat.EdgePts : null })), [
       { k: 'slot', h: 'Slot', l: true, r: slotSel },
-      { k: 'Player', h: 'Player', l: true, r: (r) => plink(r) }, C.team, C.pos,
-      { k: 'Next', h: `Week ${X.next}`, l: true },
+      { k: 'Player', h: 'Player', l: true, r: (r) => h('span', null, plink(r), h('span', { class: 'sub2' }, chip(r.Team), ' ', r.Pos)) },
+      { k: 'Next', h: `Week ${X.next}`, l: true, r: (r) => { const [a, b] = r.Next.split('|'); return h('span', null, a, b ? h('span', { class: 'sub2' }, b) : null); } },
       { k: 'Verdict', h: 'Lean', l: true, cls: (v) => 'nfl-verdict ' + (verdictCls(v) || '') },
-      { k: 'est', h: 'Est.', f: one }, { k: 'PerGame', h: 'Per game', f: one },
+      { k: 'est', h: 'Est.', f: one },
       { k: 'L3', h: 'Last 3', f: one, cls: (v, r) => (v === null ? '' : v >= r.PerGame * 1.2 ? 'nfl-good' : v <= r.PerGame * 0.8 ? 'nfl-bad' : ''), sm: true },
-      { k: 'Rank', h: 'Pos rank', r: (r) => (r.Rank ? r.Pos + r.Rank : '—'), sm: true },
-      { k: 'it', h: 'Team total', f: one, sm: true },
       { k: 'tags', h: 'Signals', l: true, s: false, r: (r) => h('span', null, r.tags.length ? r.tags.map(([c, x]) => h('span', { class: 'nfl-tag ' + c }, x)) : h('span', { class: 'nfl-note' }, 'Nothing unusual')), cls: () => 'wrap' },
       { k: 'x', h: '', s: false, r: (r) => h('button', { class: 'nfl-x', title: 'Remove from this team', 'aria-label': 'Remove ' + r.Player, onclick: () => { t.players = t.players.filter((y) => y.id !== r.Id); renderMyTeam(); } }, '×') },
     ], { sortable: false, group: (r) => (SLOT_FITS[r.slot] ? 'Starters' : r.slot === 'IR' ? 'Injured reserve' : 'Bench') });
@@ -567,7 +550,7 @@
       const away = nextG.Away === p.Team, opp = away ? nextG.Home : nextG.Away;
       const f = nextG.Week === X.next ? X.fatigueBy.get(p.Team) : null;
       const ln = nextG.Favorite ? (nextG.Favorite === 'Pick' ? 'pick’em' : `${nextG.Favorite} −${nextG.Spread}`) : null;
-      return `Next: Week ${nextG.Week} ${away ? '@' : 'vs'} ${opp} · ${nextG.Day}, ${nextG.Kickoff}${ln ? ' · ' + ln : ''}${nextG.Total ? ', O/U ' + nextG.Total : ''}${f ? ' · fatigue ' + signed(f.Score) : ''}`;
+      return `Next: Week ${nextG.Week} ${away ? '@' : 'vs'} ${opp} · ${nextG.Day}, ${nextG.Kickoff}${ln ? ' · ' + ln : ''}${nextG.Total ? ', O/U ' + nextG.Total : ''}${f && f.EdgePts ? ' · rest edge ' + signed(f.EdgePts) : ''}`;
     })() : 'No games left on the schedule.';
     const trend = l3 === null ? '' : l3 > per * 1.15 ? '▲ trending up' : l3 < per * 0.85 ? '▼ trending down' : 'steady';
     body.replaceChildren(
@@ -773,101 +756,33 @@
     table($('courage-table'), X.courage, [C.team, { k: 'Attempts', h: 'Att' }, { k: 'Conversions', h: 'Conv' }, { k: 'AttPerGame', h: 'Per game' }, { k: 'ConvPct', h: 'Conv %' }, { k: 'Record', h: 'Record', s: false }, { k: 'Style', h: 'Profile', l: true, cls: sty }], { sort: 'AttPerGame' });
   }
 
-  // ---------- TRAVEL ----------
+  // ---------- REST & TRAVEL ----------
   function renderTravel() {
-    $('fatigue-title').textContent = `Fatigue score, Week ${X.next}`;
-    // fatigue bars
-    const el = $('fatigue-chart');
-    el.replaceChildren();
-    const r = X.fatigue;
-    const W = el.clientWidth || 600, bh = 17, gap = 5, m = { t: 4, r: 28, b: 4, l: 48 };
-    const H = m.t + m.b + r.length * (bh + gap);
-    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
-    const x = d3.scaleLinear([Math.min(0, d3.min(r, (d) => d.Score)), Math.max(1, d3.max(r, (d) => d.Score))], [m.l, W - m.r]);
-    const g = svg.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
-    const tp = tip(el);
-    const row = g.selectAll('g.r').data(r).join('g').attr('transform', (d, i) => `translate(0,${m.t + i * (bh + gap)})`);
-    row.append('text').attr('x', m.l - 8).attr('y', bh / 2).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Team);
-    row.append('rect').attr('x', (d) => x(Math.min(0, d.Score))).attr('width', (d) => Math.max(2, Math.abs(x(d.Score) - x(0)))).attr('height', bh).attr('rx', 3).attr('fill', (d) => teamColor(d.Team));
-    row.append('text').attr('x', (d) => (d.Score >= 0 ? x(d.Score) + 6 : x(0) + 6)).attr('y', bh / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => d.Score);
-    row.on('pointermove', (ev, d) => tp.show(ev, `${d.Team} ${d.Where}`, [d.Flags, `${d.RestDays ?? '—'} days rest · ${fmtN(d.Miles)} miles`])).on('pointerleave', () => tp.hide());
-    table($('fatigue-games'), X.fatigueGames, [
-      { k: 'Away', h: 'Away', l: true, r: (d) => chip(d.Away) }, { k: 'Home', h: 'Home', l: true, r: (d) => chip(d.Home) }, { k: 'Kickoff', h: 'When', l: true },
-      { k: 'AwayScore', h: 'Away score' }, { k: 'HomeScore', h: 'Home score' },
-      { k: 'Diff', h: 'Edge', l: true, r: (d) => (d.Edge ? h('span', { class: 'nfl-good' }, `${d.Edge} by ${d.Diff}`) : 'Even') },
+    $('edge-title').textContent = `Week ${X.next} rest edges`;
+    table($('edge-table'), X.edges, [
+      { k: 'Away', h: 'Away', l: true, r: (d) => chip(d.Away) }, { k: 'Home', h: 'Home', l: true, r: (d) => chip(d.Home) },
+      { k: 'When', h: 'When', l: true, sm: true }, { k: 'Rest', h: 'Rest days', sm: true },
+      { k: 'Pts', h: 'Edge', l: true, r: (d) => (d.Team ? h('span', { class: 'nfl-good nfl-strong' }, `${d.Team} +${d.Pts}`) : h('span', { class: 'nfl-note', style: { margin: 0 } }, 'None')) },
+      { k: 'Why', h: 'Why', l: true, cls: () => 'wrap', r: (d) => d.Why || '' },
     ], { sortable: false });
-    table($('fatigue-table'), X.fatigue, [C.team, { k: 'Where', h: 'Game', l: true }, { k: 'Day', h: 'Day', l: true }, { k: 'RestDays', h: 'Rest days' }, { k: 'Miles', h: 'Miles', f: fmtN }, { k: 'TimeZones', h: 'Zones', f: signed }, { k: 'BodyClock', h: 'Body clock' },
-      { k: 'Score', h: 'Score', cls: (v) => (v >= 4 ? 'nfl-bad' : v < 0 ? 'nfl-good' : '') }, { k: 'Flags', h: 'Flags', l: true }], { sort: 'Score' });
-    // season miles
-    const tv = $('travel-chart');
-    tv.replaceChildren();
-    const rows = X.travel;
-    const W2 = tv.clientWidth || 600, bh2 = 14, gap2 = 4, m2 = { t: 4, r: 64, b: 4, l: 48 };
-    const H2 = m2.t + m2.b + rows.length * (bh2 + gap2);
-    const s2 = d3.select(tv).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W2} ${H2}`).style('display', 'block');
-    const x2 = d3.scaleLinear([0, d3.max(rows, (d) => d.Total)], [m2.l, W2 - m2.r]);
-    const g2 = s2.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    const tp2 = tip(tv);
-    const rr = g2.selectAll('g.r').data(rows).join('g').attr('transform', (d, i) => `translate(0,${m2.t + i * (bh2 + gap2)})`);
-    rr.append('text').attr('x', m2.l - 8).attr('y', bh2 / 2).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Team);
-    rr.append('rect').attr('x', m2.l).attr('width', (d) => x2(d.Done) - m2.l).attr('height', bh2).attr('rx', 2).attr('fill', (d) => teamColor(d.Team));
-    rr.append('rect').attr('x', (d) => x2(d.Done)).attr('width', (d) => x2(d.Total) - x2(d.Done)).attr('height', bh2).attr('rx', 2).attr('fill', (d) => teamColor(d.Team)).attr('fill-opacity', 0.3);
-    rr.append('text').attr('x', (d) => x2(d.Total) + 6).attr('y', bh2 / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => fmtN(d.Total));
-    rr.on('pointermove', (ev, d) => tp2.show(ev, X.team[d.Team].Name, [`${fmtN(d.Done)} miles so far`, `${fmtN(d.Left)} still to come`, `${d.Trips} road trips`])).on('pointerleave', () => tp2.hide());
-    renderFatigueHistory();
-  }
-  function fhSummary(rows) {
-    const n = rows.length;
-    if (!n) return { n: 0, Win: null, Cover: null, Margin: null };
-    const ats = rows.filter((r) => r.Covered !== null && r.Covered !== undefined);
-    return { n, Win: Math.round((d3.sum(rows, (r) => r.Win) / n) * 1000) / 10, Cover: ats.length ? Math.round((d3.sum(ats, (r) => r.Covered) / ats.length) * 1000) / 10 : null,
-      Margin: Math.round(d3.mean(rows, (r) => r.Margin) * 10) / 10 };
-  }
-  function renderFatigueHistory() {
-    const seasons = [...new Set(D.fatigue.map((r) => r.Season))].sort((a, b) => b - a);
-    const sel = $('fh-season');
-    if (!sel.options.length) {
-      sel.append(h('option', { value: 'all' }, `All seasons (${d3.min(seasons)}–${d3.max(seasons)})`), ...seasons.map((y) => h('option', { value: String(y) }, `${y} season`)));
-      sel.addEventListener('change', () => { state.fhSeason = sel.value; renderFatigueHistory(); });
+    const M = D.rest_model, base = M.find((m) => m.Factor === 'Home');
+    const used = M.filter((m) => m.Used);
+    $('rest-sample').textContent = `${fmtN(base.Games)} games since 2022, adjusted for home field (worth ${signed(base.Effect)} points).`;
+    const sum = $('rest-summary');
+    sum.replaceChildren();
+    if (used.length) {
+      sum.append('Only ', ...used.flatMap((m, i) => [i ? (i === used.length - 1 ? ' and ' : ', ') : '', h('b', null, m.Label.split(' (')[0].toLowerCase()), ` (${signed(m.Effect)} pts)`]),
+        ' show a real effect on the final margin. Short weeks, time zones, mileage and early kickoffs don’t. None of them reliably beat the betting spread, so sportsbooks already price this in: use it for start/sit calls, not bets.');
     }
-    sel.value = state.fhSeason;
-    const fin = D.fatigue.filter((r) => r.Status === 'Final' && (state.fhSeason === 'all' || String(r.Season) === state.fhSeason));
-    $('fh-sample').textContent = `${fmtN(fin.length / 2)} games, ${fmtN(fin.length)} team results. Small groups swing a lot, so lean on the big ones.`;
-    const pct = (v) => (v === null ? '—' : v.toFixed(1) + '%');
-    const rested = fhSummary(fin.filter((r) => r.Score <= -2)), tired = fhSummary(fin.filter((r) => r.Score >= 4));
-    const fresh = fhSummary(fin.filter((r) => r.Edge >= 2)), base = fhSummary(fin);
-    $('fh-tiles').replaceChildren(
-      tile('Win rate, rested teams (score −2 or less)', pct(rested.Win), `${fmtN(rested.n)} games · covered ${pct(rested.Cover)}`, { icon: 'moon', dark: true }),
-      tile('Win rate, worn-down teams (score 4+)', pct(tired.Win), `${fmtN(tired.n)} games · covered ${pct(tired.Cover)}`, { icon: 'fire' }),
-      tile('Fresher by 2+ points: covered the spread', pct(fresh.Cover), `${fmtN(fresh.n)} games · won ${pct(fresh.Win)}`, { icon: 'gauge' }),
-      tile('Average margin, rested vs worn down', `${signed(rested.Margin)} / ${signed(tired.Margin)}`, 'Points per game', { icon: 'layers' }),
-    );
-    const groups = (defs, key) => defs.map(([label, f]) => ({ label, ...fhSummary(fin.filter((r) => f(r[key]))) }));
-    const byScore = groups([['−2 or less', (v) => v <= -2], ['0 to 1', (v) => v >= -1 && v <= 1], ['2 to 3', (v) => v >= 2 && v <= 3], ['4 to 5', (v) => v >= 4 && v <= 5], ['6+', (v) => v >= 6]], 'Score');
-    const byEdge = groups([['Tired by 3+', (v) => v <= -3], ['Tired by 1–2', (v) => v >= -2 && v <= -1], ['Even', (v) => v === 0], ['Fresher by 1–2', (v) => v >= 1 && v <= 2], ['Fresher by 3+', (v) => v >= 3]], 'Edge');
-    const chart = (id, rows) => groupedBars($(id), rows.filter((r) => r.n).map((r) => ({ label: r.label, a: r.Win, b: r.Cover ?? 0, n: r.n })), ['Win %', 'Covered %'], { pct: true, domain: [0, 80], ref: 50, height: 230, barWidth: 16 });
-    chart('fh-score-chart', byScore);
-    chart('fh-edge-chart', byEdge);
-    const cols = (first) => [{ k: 'label', h: first, l: true }, { k: 'n', h: 'Games', f: fmtN }, { k: 'Win', h: 'Win %', f: pct, cls: (v) => (v >= 55 ? 'nfl-good' : v <= 45 ? 'nfl-bad' : '') },
-      { k: 'Cover', h: 'Cover %', f: pct, cls: (v) => (v >= 55 ? 'nfl-good' : v <= 45 ? 'nfl-bad' : '') }, { k: 'Margin', h: 'Margin', f: signed, cls: (v) => (v > 0 ? 'nfl-good' : v < 0 ? 'nfl-bad' : '') }];
-    table($('fh-score-table'), byScore, cols('Fatigue score'), { sortable: false });
-    table($('fh-edge-table'), byEdge, cols('Edge'), { sortable: false });
-    const factors = [['Off a bye', /Off a bye/], ['Short week (4 days or less)', /Short week/], ['Six days or less', /Six days/], ['Early body clock (before 11:30 home time)', /Early body clock/],
-      ['2+ time zones', /time zones/], ['Overseas', /Overseas/], ['Altitude', /Altitude/], ['1,500+ miles from home', null]];
-    const facRows = factors.map(([label, re]) => ({ label, ...fhSummary(fin.filter((r) => (re ? re.test(r.Flags) : r.Miles >= 1500))) })).concat([{ label: 'All games (baseline)', ...base }]);
-    table($('fh-factor-table'), facRows, cols('Factor'), { sortable: false });
-    const teams = D.teams.map((t) => {
-      const mine = fin.filter((r) => r.Team === t.Team);
-      const tough = fhSummary(mine.filter((r) => r.Score >= 3)), fresher = fhSummary(mine.filter((r) => r.Edge >= 1));
-      const rec = (rows) => { const w = d3.sum(rows, (r) => r.Win === 1), l = d3.sum(rows, (r) => r.Win === 0); return rows.length ? `${w}-${l}` : '—'; };
-      return { Team: t.Team, AvgScore: Math.round(d3.mean(mine, (r) => r.Score) * 100) / 100, Tough: tough.n, ToughRec: rec(mine.filter((r) => r.Score >= 3)), ToughWin: tough.Win,
-        Fresher: fresher.n, FresherRec: rec(mine.filter((r) => r.Edge >= 1)), FresherWin: fresher.Win };
-    });
-    table($('fh-team-table'), teams, [C.team, { k: 'AvgScore', h: 'Avg fatigue', f: (v) => v.toFixed(2) }, { k: 'ToughRec', h: 'Record when tired', v: (r) => r.ToughWin ?? -1 }, { k: 'Tough', h: 'Games', sm: true },
-      { k: 'FresherRec', h: 'Record when fresher', v: (r) => r.FresherWin ?? -1 }, { k: 'Fresher', h: 'Games', sm: true }], { sort: 'ToughRec' });
+    const ev = (p, used) => (p < 0.05 ? ['real', 'Real'] : p < 0.10 ? ['likely', 'Likely'] : ['none', 'No clear effect']);
+    table($('rest-model'), M.filter((m) => m.Factor !== 'Home').sort((a, b) => a.P - b.P), [
+      { k: 'Label', h: 'Factor', l: true, cls: () => 'wrap' },
+      { k: 'Effect', h: 'Effect on margin', r: (m) => `${signed(m.Effect)} pts` },
+      { k: 'P', h: 'Evidence', l: true, r: (m) => { const [c, t] = ev(m.P); return h('span', { class: 'nfl-ev ' + c }, t); } },
+      { k: 'VsSpreadP', h: 'Beats the spread?', l: true, sm: true, r: (m) => (m.VsSpreadP < 0.05 ? 'Yes' : 'No') },
+      { k: 'Games', h: 'Games', f: fmtN, sm: true },
+    ], { sortable: false });
   }
-
 
   // ---------- REFS ----------
   function renderRefs() {
@@ -933,7 +848,7 @@
     }
     else state.route = PAGES[hash] ? hash : 'home';
     if (state.route !== 'player') document.title = 'NFL Oddities';
-    const TITLES = { home: 'Dashboard', myteam: 'My team', players: 'Players', player: 'Player', courage: 'Coach courage', travel: 'Fatigue & travel', refs: 'Ref crews', wild: 'Wild cards' };
+    const TITLES = { home: 'Dashboard', myteam: 'My team', players: 'Players', player: 'Player', courage: 'Coach courage', travel: 'Rest & travel', refs: 'Ref crews', wild: 'Wild cards' };
     $('page-title').textContent = TITLES[state.route];
     $('takeaway').hidden = state.route !== 'home';
     document.querySelectorAll('.nfl-page').forEach((p) => { p.hidden = p.id !== state.route; });

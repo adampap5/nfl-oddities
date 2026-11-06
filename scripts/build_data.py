@@ -199,6 +199,85 @@ def fatigue_rows(all_games, stadiums):
     return out
 
 
+# ---- rest & travel model: which factors move the final margin, after home field?
+FACTORS = [
+    ("ExtraRest", "Extra rest (off a bye, 10+ days)", lambda x: 1 if (not x["RestDays"] or x["RestDays"] >= 10) else 0),
+    ("SixDays", "Short rest (5-6 days)", lambda x: 1 if x["RestDays"] and 5 <= x["RestDays"] <= 6 else 0),
+    ("Altitude", "Visiting at altitude (Denver, Mexico City)", lambda x: 1 if "Altitude" in x["Flags"] else 0),
+    ("TimeZones", "Crossing 2+ time zones", lambda x: 1 if "time zones" in x["Flags"] and "Overseas" not in x["Flags"] else 0),
+    ("EarlyClock", "Early kickoff on the body clock", lambda x: 1 if "Early body" in x["Flags"] and "Overseas" not in x["Flags"] else 0),
+    ("Miles", "Distance traveled (per 1,000 miles)", lambda x: x["Miles"] / 1000 if "Overseas" not in x["Flags"] else 0),
+]
+KEEP_P = 0.10  # a factor counts toward the rest edge only with this much evidence
+
+
+def _solve(A, b):
+    n = len(A)
+    M = [row[:] + [b[i]] for i, row in enumerate(A)]
+    for c in range(n):
+        piv = max(range(c, n), key=lambda r: abs(M[r][c]))
+        M[c], M[piv] = M[piv], M[c]
+        for r in range(n):
+            if r != c and M[c][c]:
+                k = M[r][c] / M[c][c]
+                M[r] = [a - k * bb for a, bb in zip(M[r], M[c])]
+    return [M[i][n] / M[i][i] for i in range(n)]
+
+
+def _ols(X, Y):
+    """Least squares with standard errors and two-sided normal p-values, standard library only."""
+    import math
+    k = len(X[0])
+    XtX = [[sum(r[i] * r[j] for r in X) for j in range(k)] for i in range(k)]
+    XtY = [sum(r[i] * y for r, y in zip(X, Y)) for i in range(k)]
+    b = _solve(XtX, XtY)
+    res = [y - sum(bi * xi for bi, xi in zip(b, r)) for r, y in zip(X, Y)]
+    s2 = sum(e * e for e in res) / (len(X) - k)
+    inv = [_solve(XtX, [1 if i == j else 0 for i in range(k)]) for j in range(k)]
+    se = [math.sqrt(max(s2 * inv[i][i], 1e-12)) for i in range(k)]
+    p = [2 * (1 - 0.5 * (1 + math.erf(abs(bi / si) / math.sqrt(2)))) for bi, si in zip(b, se)]
+    return b, se, p
+
+
+def rest_model(rows):
+    games = {}
+    for x in rows:
+        if x["Status"] == "Final":
+            games.setdefault((x["Season"], x["Week"], tuple(sorted([x["Team"], x["Opp"]]))), []).append(x)
+    X, Y, XA, YA = [], [], [], []
+    for pair in games.values():
+        if len(pair) != 2:
+            continue
+        a, b = sorted(pair, key=lambda r: r["Team"])
+        home = 1 if a["Site"] == "Home" else -1 if a["Site"] == "Away" else 0
+        row = [home] + [f(a) - f(b) for _, _, f in FACTORS]
+        X.append(row); Y.append(a["Margin"])
+        if a["Line"] is not None:
+            XA.append(row); YA.append(a["Margin"] + a["Line"])
+    b, se, p = _ols(X, Y)
+    ba, _, pa = _ols(XA, YA)
+    out = [{"Factor": "Home", "Label": "Home field", "Games": len(X), "Effect": round(b[0], 1), "P": round(p[0], 3),
+            "VsSpread": round(ba[0], 1), "VsSpreadP": round(pa[0], 3), "Used": False}]
+    for i, (key, label, _) in enumerate(FACTORS, start=1):
+        n = sum(1 for r in X if r[i] != 0)
+        out.append({"Factor": key, "Label": label, "Games": n, "Effect": round(b[i], 1), "P": round(p[i], 3),
+                    "VsSpread": round(ba[i], 1), "VsSpreadP": round(pa[i], 3), "Used": p[i] < KEEP_P and n >= 20})
+    return out
+
+
+def apply_model(rows, model):
+    used = {m["Factor"]: m["Effect"] for m in model if m["Used"]}
+    fns = {key: f for key, _, f in FACTORS}
+    for x in rows:
+        x["Impact"] = round(sum(eff * fns[k](x) for k, eff in used.items()), 1)
+        x["Reasons"] = [lbl for k, lbl, f in FACTORS if k in used and f(x)]
+    imp = {(x["Season"], x["Week"], x["Team"]): x["Impact"] for x in rows}
+    for x in rows:
+        x["EdgePts"] = round(x["Impact"] - imp.get((x["Season"], x["Week"], x["Opp"]), 0), 1)
+        for k in ("Score", "OppScore", "Edge"):
+            x.pop(k, None)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=2026)
@@ -384,9 +463,12 @@ def main():
 
     stadiums = json.load(open(os.path.join(a.out, "stadiums.json"), encoding="utf-8"))
     fatigue = fatigue_rows(all_games, stadiums)
+    model = rest_model(fatigue)
+    apply_model(fatigue, model)
 
     os.makedirs(a.out, exist_ok=True)
-    for name, data in [("fatigue", fatigue), ("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta])]:
+    fatigue_now = [x for x in fatigue if x["Season"] == season]  # history is only needed to fit the model
+    for name, data in [("fatigue", fatigue_now), ("rest_model", model), ("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta])]:
         with open(os.path.join(a.out, f"{name}.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh, separators=(",", ":"))
         print(f"{name}.json: {len(data)} rows")

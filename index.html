@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/theme.css?v=52c5b66468">
-<link rel="stylesheet" href="assets/app.css?v=373ca3cfa2">
+<link rel="stylesheet" href="assets/app.css?v=2ae338fbe3">
 <script src="assets/d3.min.js?v=6d64bd2f09"></script>
 </head>
 <body>
@@ -23,7 +23,7 @@
         <a class="nfl-tab" href="#myteam" data-tab="myteam"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.6.1 4.4 1.9 5 4.5"/></svg></span>My team</a>
         <a class="nfl-tab" href="#players" data-tab="players"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Players</a>
         <a class="nfl-tab" href="#courage" data-tab="courage"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>Coach courage</a>
-        <a class="nfl-tab" href="#travel" data-tab="travel"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>Fatigue &amp; travel</a>
+        <a class="nfl-tab" href="#travel" data-tab="travel"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>Rest &amp; travel</a>
         <a class="nfl-tab" href="#refs" data-tab="refs"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>Ref crews</a>
         <a class="nfl-tab" href="#wild" data-tab="wild"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg></span>Wild cards</a>
     </nav>
@@ -158,69 +158,24 @@
 
   <!-- TRAVEL -->
   <section class="nfl-page" id="travel" hidden>
-    <div class="nfl-grid wide">
-      <div class="nfl-card">
-        <h3 id="fatigue-title">Fatigue score, this week</h3>
-        <p class="nfl-note">Higher means a tougher spot: short rest, long trips, time-zone jumps, an early body-clock kickoff, altitude or an overseas game. Coming off a bye counts as a boost.</p>
-        <div class="nfl-chart" id="fatigue-chart"></div>
-      </div>
-      <div class="nfl-card">
-        <h3>Rest and travel edge by game</h3>
-        <p class="nfl-note">The fresher team in each matchup and by how many points. A big edge is a reason to lean on that side's players.</p>
-        <div class="nfl-scroll" id="fatigue-games"></div>
-      </div>
-    </div>
     <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
-      <h3>Season travel miles</h3>
-      <p class="nfl-note">Round-trip miles to every road and international game this season. Solid is already flown; faded is still to come.</p>
-      <div class="nfl-chart" id="travel-chart"></div>
+      <h3 id="edge-title">This week's rest edges</h3>
+      <p class="nfl-note">Only the factors with real evidence behind them count (see below). Points are added to the team's expected margin.</p>
+      <div id="edge-table"></div>
     </div>
     <div class="nfl-card">
-      <h3>Every team's spot this week</h3>
-      <p class="nfl-note">Body clock is the kickoff time back home. Miles are straight-line from the team's stadium.</p>
-      <div class="nfl-scroll" id="fatigue-table"></div>
+      <h3>What actually matters</h3>
+      <p class="nfl-note" id="rest-sample"></p>
+      <p class="rest-summary" id="rest-summary"></p>
+      <div id="rest-model"></div>
     </div>
-    <h2 class="nfl-h2" id="fatigue-history">Does fatigue actually matter?</h2>
-    <div class="nfl-controls" style="margin-bottom: 14px">
-      <select class="dash-select" id="fh-season" aria-label="Seasons"></select>
-      <span class="nfl-note" id="fh-sample" style="margin:0"></span>
-    </div>
-    <div class="nfl-tiles" id="fh-tiles"></div>
-    <div class="nfl-grid wide">
-      <div class="nfl-card">
-        <div class="nfl-card-head"><h3>Results by fatigue score</h3><div class="nfl-legend"><span><i style="background: var(--accent)"></i>Win %</span><span><i style="background: var(--accent-2)"></i>Covered the spread %</span></div></div>
-        <p class="nfl-note">Every regular-season game scored the same way as this week's. Dashed line is 50%. Scores of 6+ are mostly international games where both teams make the same trip, so the edge chart beside this one is the fairer test.</p>
-        <div class="nfl-chart" id="fh-score-chart" style="min-height: 16rem"></div>
-        <div id="fh-score-table"></div>
-      </div>
-      <div class="nfl-card">
-        <div class="nfl-card-head"><h3>Results by rest-and-travel edge</h3><div class="nfl-legend"><span><i style="background: var(--accent)"></i>Win %</span><span><i style="background: var(--accent-2)"></i>Covered %</span></div></div>
-        <p class="nfl-note">Edge is the opponent's fatigue score minus the team's own, so positive means the team was fresher.</p>
-        <div class="nfl-chart" id="fh-edge-chart" style="min-height: 16rem"></div>
-        <div id="fh-edge-table"></div>
-      </div>
-    </div>
-    <div class="nfl-grid wide">
-      <div class="nfl-card">
-        <h3>Which factors hurt most</h3>
-        <p class="nfl-note">Every game where a team had each factor, regardless of the others. Margin is average points scored minus allowed. Short weeks look neutral because both teams on a Thursday night usually have one.</p>
-        <div id="fh-factor-table"></div>
-      </div>
-      <div class="nfl-card">
-        <h3>Teams in tough spots</h3>
-        <p class="nfl-note">Each team's record when its fatigue score was 3 or higher, and when it was the fresher side, for the seasons picked above.</p>
-        <div class="nfl-scroll" id="fh-team-table"></div>
-      </div>
-    </div>
-
     <details>
-      <summary>How the fatigue score works</summary>
+      <summary>How this is calculated</summary>
       <dl>
-        <dt>Short week</dt><dd>+3 for four days of rest or fewer, +1 for five or six. Ten or more days, or a bye, is −2.</dd>
-        <dt>Distance</dt><dd>+1 for each full 1,000 miles from home.</dd>
-        <dt>Time zones</dt><dd>+1 for each zone beyond the first. An overseas game is +3.</dd>
-        <dt>Body clock</dt><dd>+2 when kickoff lands before 11:30 AM on the team's home clock.</dd>
-        <dt>Altitude</dt><dd>+1 for a visiting team in a stadium above 5,000 feet.</dd>
+        <dt>Data</dt><dd>Every regular-season game since 2022, refit each morning as new results come in.</dd>
+        <dt>Effect</dt><dd>Points added to or taken from a team's final margin when it has the factor and its opponent doesn't, after adjusting for home field and the other factors.</dd>
+        <dt>Evidence</dt><dd>"Real" means less than a 5% chance the effect is luck, "Likely" less than 10%, "No clear effect" anything weaker. Only Real and Likely factors count toward the rest edge.</dd>
+        <dt>Vs. the spread</dt><dd>Whether the effect still shows up after the betting line. If it doesn't, the sportsbooks already price it in.</dd>
       </dl>
     </details>
   </section>
@@ -281,6 +236,6 @@
   </main>
 </div>
 </div>
-<script src="assets/app.js?v=a9c7f53490"></script>
+<script src="assets/app.js?v=ccdb6f1899"></script>
 </body>
 </html>
