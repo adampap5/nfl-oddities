@@ -29,6 +29,7 @@
 
   <nav class="nfl-tabs" role="tablist" aria-label="Pages">
     <a class="nfl-tab" href="#home" data-tab="home">Home</a>
+    <a class="nfl-tab" href="#myteam" data-tab="myteam">My team</a>
     <a class="nfl-tab" href="#players" data-tab="players">Players</a>
     <a class="nfl-tab" href="#courage" data-tab="courage">Coach courage</a>
     <a class="nfl-tab" href="#travel" data-tab="travel">Fatigue &amp; travel</a>
@@ -80,6 +81,22 @@
       <p class="nfl-note" id="cat-note"></p>
       <div class="nfl-scroll tall" id="player-table"></div>
     </div>
+  </section>
+
+  <!-- MY TEAM -->
+  <section class="nfl-page" id="myteam" hidden>
+    <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
+      <h3>Add players</h3>
+      <p class="nfl-note">Search your players and tap to add them. Your roster is saved only in this browser. Use "Copy link" to open it on another device.</p>
+      <div class="nfl-controls" style="margin-bottom: 0">
+        <input class="nfl-search" id="my-search" type="search" placeholder="Add a player, e.g. Jahmyr Gibbs" aria-label="Add a player" autocomplete="off">
+        <button class="nfl-btn" id="my-copy" type="button">Copy link</button>
+        <button class="nfl-btn subtle" id="my-clear" type="button">Clear roster</button>
+        <span class="nfl-note" id="my-msg" style="margin:0"></span>
+      </div>
+      <div class="nfl-results" id="my-results" hidden style="margin: var(--cds-gap-sm) 0 0"></div>
+    </div>
+    <div id="my-body"></div>
   </section>
 
   <!-- PLAYER PAGE -->

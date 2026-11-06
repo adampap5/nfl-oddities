@@ -8,6 +8,7 @@
     route: 'home', playerId: null,
     scoring: load('scoring') || 'PPR',
     cat: 'fantasy', q: '', pos: '', team: '',
+    roster: (load('roster') || '').split(',').filter(Boolean), myq: '',
   };
   const fmtN = d3.format(',');
   const COLORS = ['#c96442', '#3f7cac', '#6a9a4f', '#a3639e', '#d39a2c', '#4a9a96'];
@@ -321,6 +322,123 @@
       : h('p', { class: 'nfl-empty' }, 'No player matches that search.'));
   }
 
+
+  // ---------- MY TEAM ----------
+  const POS_ORDER = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
+  const START_LINE = { QB: 12, RB: 24, WR: 30, TE: 12, K: 12, DST: 12 };
+  function saveRoster() { state.roster = [...new Set(state.roster)].filter((id) => X.player[id]); save('roster', state.roster.join(',')); }
+  function implied(g, team) {
+    if (!g || g.Total === null || g.Spread === null || !g.Favorite) return null;
+    const fav = g.Favorite === team ? 1 : g.Favorite === 'Pick' ? 0 : -1;
+    return Math.round(((g.Total + fav * g.Spread) / 2) * 10) / 10;
+  }
+  function outlook(p) {
+    const sc = pts();
+    const weeks = X.weekly.get(p.Id) || [];
+    const per = p[sc] / p.GP;
+    const l3w = weeks.slice(-3);
+    const l3 = l3w.length ? d3.mean(l3w, (w) => w[sc]) : null;
+    const g = D.games.find((x) => x.Week === X.next && (x.Away === p.Team || x.Home === p.Team));
+    const tags = [];
+    let adj = 0;
+    const tag = (cls, text, w) => { tags.push([cls, text]); adj += w; };
+    if (!g) return { p, g: null, per, l3, tags: [['bad', 'On bye']], verdict: 'On bye', rank: null, it: null, fat: null, sortKey: -1 };
+    const it = implied(g, p.Team);
+    const wp = g.Away === p.Team ? g.AwayWinProb : g.HomeWinProb;
+    const fat = X.fatigueBy.get(p.Team);
+    if (it !== null && p.Pos !== 'DST') {
+      if (it >= 26) tag('good', `High team total (${it})`, 1);
+      else if (it <= 19) tag('bad', `Low team total (${it})`, -1);
+    }
+    if (p.Pos === 'DST' && it !== null) {
+      const oppTotal = Math.round((g.Total - it) * 10) / 10;
+      if (oppTotal <= 19) tag('good', `Opponent projected for ${oppTotal}`, 1);
+      else if (oppTotal >= 26) tag('bad', `Opponent projected for ${oppTotal}`, -1);
+    }
+    if (wp !== null && wp !== undefined) {
+      if (wp >= 70 && (p.Pos === 'RB' || p.Pos === 'DST' || p.Pos === 'K')) tag('good', 'Big favorite', 1);
+      if (wp <= 30 && p.Pos === 'RB') tag('warn', 'Likely trailing', -1);
+      if (wp <= 30 && (p.Pos === 'WR' || p.Pos === 'TE' || p.Pos === 'QB')) tag('muted', 'Likely throwing late', 0);
+    }
+    if (fat) {
+      if (fat.Score >= 4) tag('warn', 'Tough travel spot', -1);
+      else if (fat.Score <= -2) tag('good', 'Rested', 0.5);
+      if (/Short week/.test(fat.Flags)) tag('warn', 'Short week', -0.5);
+    }
+    if (l3 !== null && weeks.length >= 4) {
+      if (l3 >= per * 1.2) tag('good', 'Hot lately', 0.5);
+      else if (l3 <= per * 0.8) tag('warn', 'Cooling off', -0.5);
+    }
+    if (p.Pos !== 'K' && p.Pos !== 'DST' && weeks.length >= 4) {
+      const touches = (w) => (w.Targets || 0) + (w.Carries || 0) + (p.Pos === 'QB' ? 0 : 0);
+      if (p.Pos !== 'QB') {
+        const u3 = d3.mean(l3w, touches), uAll = d3.mean(weeks, touches);
+        if (uAll >= 4 && u3 >= uAll * 1.2) tag('good', 'Usage rising', 0.5);
+        else if (uAll >= 4 && u3 <= uAll * 0.75) tag('bad', 'Usage falling', -0.5);
+      }
+    }
+    const luck = X.tdLuck.filter((r) => r.Id === p.Id);
+    const gap = d3.sum(luck, (r) => r.Gap);
+    if (gap >= 2.5) tag('warn', 'TD-lucky so far', 0);
+    else if (gap <= -2) tag('good', 'Due for TDs', 0.5);
+    // rank by per-game points at his position (3+ games), then nudge by the signals
+    const pool = D.players.filter((q) => q.Pos === p.Pos && q.GP >= 3).sort((a, b) => b[ppg()] - a[ppg()]);
+    const rank = pool.findIndex((q) => q.Id === p.Id) + 1 || pool.length;
+    const line = START_LINE[p.Pos] || 12;
+    const eff = rank - adj * (line / 6);
+    const verdict = eff <= line * 0.4 ? 'Must start' : eff <= line ? 'Start' : eff <= line * 1.4 ? 'Flex / borderline' : 'Bench';
+    return { p, g, per, l3, tags, verdict, rank, it, fat, sortKey: eff };
+  }
+  function renderMyTeam() {
+    saveRoster();
+    const res = $('my-results');
+    const q = state.myq.toLowerCase();
+    if (q) {
+      const hits = D.players.filter((p) => p.Player.toLowerCase().includes(q)).slice(0, 12);
+      res.hidden = false;
+      res.replaceChildren(hits.length ? h('ul', null, hits.map((p) => {
+        const on = state.roster.includes(p.Id);
+        return h('li', null, h('a', { href: '#myteam', onclick: (e) => { e.preventDefault(); if (!on) state.roster.push(p.Id); state.myq = ''; $('my-search').value = ''; renderMyTeam(); $('my-search').focus(); } },
+          chip(p.Team), h('span', { class: 'nfl-plink' }, p.Player), h('span', { class: 'meta' }, on ? 'On your team' : `${p.Pos} · ${one(p[ppg()])}/g`)));
+      })) : h('p', { class: 'nfl-empty' }, 'No player matches that search.'));
+    } else res.hidden = true;
+
+    const body = $('my-body');
+    if (!state.roster.length) {
+      body.replaceChildren(h('div', { class: 'nfl-card' }, h('h3', null, 'Your roster is empty'), h('p', { class: 'nfl-note' }, 'Add your players above. Each one gets a start/sit lean for this week built from his scoring pace, the betting outlook for his team, rest and travel, recent form, usage trend and touchdown luck.')));
+      return;
+    }
+    const rows = state.roster.map((id) => outlook(X.player[id])).sort((a, b) => POS_ORDER.indexOf(a.p.Pos) - POS_ORDER.indexOf(b.p.Pos) || a.sortKey - b.sortKey);
+    const byes = rows.filter((r) => !r.g);
+    const hot = d3.greatest(rows.filter((r) => r.l3 !== null), (r) => r.l3 - r.per);
+    const total = d3.sum(rows, (r) => r.per);
+    const tile = (lbl, big, who, team) => h('div', { class: 'nfl-tile', style: team ? { '--tc': teamColor(team) } : null }, h('div', { class: 'lbl' }, lbl), h('div', { class: 'big' }, big), h('div', { class: 'who' }, who));
+    const verdictCls = (v) => ({ 'Must start': 'nfl-good', Start: 'nfl-good', 'Flex / borderline': 'nfl-warn', Bench: 'nfl-bad', 'On bye': 'nfl-bad' }[v]);
+    const nextTxt = (r) => {
+      if (!r.g) return 'BYE';
+      const away = r.g.Away === r.p.Team;
+      return `${away ? '@' : 'vs'} ${away ? r.g.Home : r.g.Away} · ${r.g.Day.split(' ')[0]} ${r.g.Kickoff}`;
+    };
+    const tbl = h('div', { class: 'nfl-scroll tall' });
+    body.replaceChildren(
+      h('div', { class: 'nfl-tiles' },
+        tile('Players on your team', rows.length, `${POS_ORDER.map((ps) => [ps, rows.filter((r) => r.p.Pos === ps).length]).filter(([, n]) => n).map(([ps, n]) => n + ' ' + ps).join(' · ')}`),
+        tile(`On bye in Week ${X.next}`, byes.length, byes.length ? byes.map((r) => r.p.Player).join(', ') : 'Nobody'),
+        hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), hot.p.Team) : null,
+        tile(`Roster points per game (${state.scoring === 'PPR' ? 'PPR' : 'half'})`, one(total), 'Sum of every player’s season average')),
+      h('div', { class: 'nfl-card' }, h('h3', null, `Week ${X.next} start/sit leans`), h('p', { class: 'nfl-note' }, 'Grouped by position, best lean first. The lean starts from his per-game rank at his position and moves with the signals. It’s a guide, not a projection.'), tbl));
+    table(tbl, rows.map((r) => ({ ...r, Id: r.p.Id, Player: r.p.Player, Team: r.p.Team, Pos: r.p.Pos, PerGame: Math.round(r.per * 10) / 10, L3: r.l3 === null ? null : Math.round(r.l3 * 10) / 10, Rank: r.rank, Next: nextTxt(r), Verdict: r.verdict, Fat: r.fat ? r.fat.Score : null })), [
+      { k: 'Player', h: 'Player', l: true, r: (r) => plink(r) }, C.team, C.pos,
+      { k: 'Next', h: `Week ${X.next}`, l: true },
+      { k: 'Verdict', h: 'Lean', l: true, cls: (v) => 'nfl-verdict ' + verdictCls(v) },
+      { k: 'PerGame', h: 'Per game', f: one }, { k: 'L3', h: 'Last 3', f: one, cls: (v, r) => (v === null ? '' : v >= r.PerGame * 1.2 ? 'nfl-good' : v <= r.PerGame * 0.8 ? 'nfl-bad' : '') },
+      { k: 'Rank', h: 'Pos rank', r: (r) => (r.Rank ? r.Pos + r.Rank : '—'), sm: true },
+      { k: 'it', h: 'Team total', f: one, sm: true }, { k: 'Fat', h: 'Fatigue', f: signed, sm: true },
+      { k: 'tags', h: 'Signals', l: true, s: false, r: (r) => h('span', null, r.tags.length ? r.tags.map(([c, t]) => h('span', { class: 'nfl-tag ' + c }, t)) : h('span', { class: 'nfl-note' }, 'Nothing unusual')), cls: () => 'wrap' },
+      { k: 'x', h: '', s: false, r: (r) => h('button', { class: 'nfl-x', title: 'Remove from my team', 'aria-label': 'Remove ' + r.Player, onclick: () => { state.roster = state.roster.filter((id) => id !== r.Id); renderMyTeam(); } }, '×') },
+    ], { sortable: false, group: (r) => ({ QB: 'Quarterbacks', RB: 'Running backs', WR: 'Wide receivers', TE: 'Tight ends', K: 'Kickers', DST: 'Defenses' }[r.Pos]) });
+  }
+
   // ---------- PLAYER PAGE ----------
   function renderPlayer() {
     const body = $('player-body');
@@ -603,10 +721,16 @@
   }
 
   // ---------- routing ----------
-  const PAGES = { home: renderHome, players: renderPlayers, player: renderPlayer, courage: renderCourage, travel: renderTravel, refs: renderRefs, wild: renderWild };
+  const PAGES = { home: renderHome, myteam: renderMyTeam, players: renderPlayers, player: renderPlayer, courage: renderCourage, travel: renderTravel, refs: renderRefs, wild: renderWild };
   function route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash.startsWith('player/')) { state.route = 'player'; state.playerId = hash.slice(7); }
+    else if (hash.startsWith('myteam/')) {
+      const ids = hash.slice(7).split(',').filter((id) => X.player[id]);
+      if (ids.length) { state.roster = [...new Set([...state.roster, ...ids])]; saveRoster(); }
+      history.replaceState(null, '', '#myteam');
+      state.route = 'myteam';
+    }
     else state.route = PAGES[hash] ? hash : 'home';
     if (state.route !== 'player') document.title = 'NFL Oddities';
     document.querySelectorAll('.nfl-page').forEach((p) => { p.hidden = p.id !== state.route; });
@@ -637,6 +761,14 @@
     $('search').addEventListener('input', (e) => { state.q = e.target.value.trim(); render(); });
     $('pos-filter').addEventListener('change', (e) => { state.pos = e.target.value; if (state.pos === 'K') state.cat = 'kicking'; else if (state.pos === 'DST') state.cat = 'defense'; else if (['kicking', 'defense'].includes(state.cat)) state.cat = 'fantasy'; render(); });
     $('team-filter').addEventListener('change', (e) => { state.team = e.target.value; render(); });
+    $('my-search').addEventListener('input', (e) => { state.myq = e.target.value.trim(); renderMyTeam(); });
+    $('my-clear').addEventListener('click', () => { if (confirm('Remove every player from your team?')) { state.roster = []; renderMyTeam(); } });
+    $('my-copy').addEventListener('click', async () => {
+      const url = location.href.split('#')[0] + '#myteam/' + state.roster.join(',');
+      let ok = false;
+      try { await navigator.clipboard.writeText(url); ok = true; } catch (e) { /* fall back below */ }
+      $('my-msg').textContent = ok ? 'Link copied. Open it on another device to load this roster.' : url;
+    });
     const tf = $('team-filter');
     D.teams.forEach((t) => tf.append(h('option', { value: t.Team }, `${t.Team} · ${t.Name}`)));
   }

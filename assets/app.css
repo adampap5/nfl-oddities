@@ -80,3 +80,16 @@ th[aria-sort="ascending"] .nfl-sort::after { content: " ↑"; }
   .nfl dl { grid-template-columns: 1fr; }
   .nfl-phead .nums { gap: var(--cds-gap-md); }
 }
+
+.nfl-btn { font: inherit; font-size: var(--cds-font-size-caption); padding: 7px 12px; border-radius: var(--cds-radius); border: 1px solid var(--color-border-line); background: var(--color-panel); color: var(--color-fg); cursor: pointer; }
+.nfl-btn:hover { border-color: var(--color-fg-muted); }
+.nfl-btn.subtle { color: var(--color-fg-muted); }
+.nfl-x { appearance: none; border: 0; background: none; color: var(--color-fg-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+.nfl-x:hover { color: var(--color-bad); background: color-mix(in srgb, var(--color-bad) 10%, transparent); }
+.nfl-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; margin: 1px 3px 1px 0; border: 1px solid currentColor; white-space: nowrap; }
+.nfl-tag.good { color: var(--color-ok); }
+.nfl-tag.bad { color: var(--color-bad); }
+.nfl-tag.warn { color: var(--color-warn); }
+.nfl-tag.muted { color: var(--color-fg-muted); }
+.nfl-verdict { font-weight: 600; }
+.nfl-table td.wrap { white-space: normal; min-width: 14rem; }
