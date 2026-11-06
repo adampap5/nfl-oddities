@@ -59,6 +59,37 @@
   const pts = () => state.scoring; // 'PPR' | 'Half'
   const ppg = () => (state.scoring === 'PPR' ? 'PPRPerGame' : 'HalfPerGame');
 
+
+  // ---------- icons & tiles ----------
+  const ICONS = {
+    pass: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>',
+    rush: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    rec: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+    star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+    bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.6.1 4.4 1.9 5 4.5"/>',
+    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    fire: '<path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-3.5 2.5-5 .5 2 1.5 2.5 2.5 2.5C12 8 11 6 12 3z"/>',
+    layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+    gauge: '<path d="M4 15a8 8 0 1 1 16 0"/><path d="m12 15 4-5"/>',
+  };
+  function svgIcon(name) {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor');
+    s.setAttribute('stroke-width', '1.9'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round');
+    s.innerHTML = ICONS[name] || ICONS.star;
+    return s;
+  }
+  function tile(lbl, big, who, o = {}) {
+    return h('div', { class: 'nfl-tile' + (o.dark ? ' dark' : '') },
+      h('div', { class: 'tic' }, svgIcon(o.icon || 'star')),
+      h('div', { class: 'big' }, big),
+      who ? h('div', { class: 'who' }, who) : null,
+      h('div', { class: 'lbl' }, lbl),
+      o.team ? h('span', { class: 'tc-bar', style: { background: teamColor(o.team) } }) : null);
+  }
+
   // ---------- table ----------
   // cols: {k, h, f(fmt), cls(v,r), r(render node), l(left), s(sortable, default true), sm(hide on small)}
   function table(host, rows, cols, opts = {}) {
@@ -246,6 +277,9 @@
     if (crew) take.append(h('b', null, crew.Referee), "'s crew is throwing the most flags in the league.");
     $('built').textContent = `Stats updated ${d3.utcFormat('%b %-d, %Y')(new Date(m.BuiltAt))} · ${fmtN(m.Players)} players tracked · Built with Claude.`;
     document.querySelectorAll('.nfl-scoring button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scoring === state.scoring)));
+    const nt = state.teams.filter((t) => t.players.length).length;
+    $('side-count').textContent = nt;
+    $('side-sub').textContent = `${nt} fantasy team${nt === 1 ? '' : 's'}`;
   }
 
   // ---------- HOME ----------
@@ -253,15 +287,28 @@
     const top = (k, f) => d3.greatest(D.players.filter(f || (() => true)), (p) => p[k]);
     const p = top('PassYds'), r = top('RushYds'), c = top('RecYds'), f = top(pts());
     const bold = X.courage[0], crew = X.crews[0];
-    const tile = (lbl, big, who, team) => h('div', { class: 'nfl-tile', style: team ? { '--tc': teamColor(team) } : null }, h('div', { class: 'lbl' }, lbl), h('div', { class: 'big' }, big), h('div', { class: 'who' }, who));
+    $('quick-sub').textContent = `Season leaders and league oddities through Week ${X.through}.`;
     $('home-tiles').replaceChildren(
-      tile('Passing yards leader', fmtN(p.PassYds), plink(p), p.Team),
-      tile('Rushing yards leader', fmtN(r.RushYds), plink(r), r.Team),
-      tile('Receiving yards leader', fmtN(c.RecYds), plink(c), c.Team),
-      tile(`Top fantasy scorer (${state.scoring === 'PPR' ? 'PPR' : 'half-PPR'})`, one(f[pts()]), plink(f), f.Team),
-      tile('Most 4th-down tries per game', show(bold.AttPerGame), bold.Name, bold.Team),
-      tile('Flag-happiest crew (per game)', show(crew.PenPerGame), crew.Referee),
+      tile('Passing yards leader', fmtN(p.PassYds), plink(p), { icon: 'pass', team: p.Team }),
+      tile('Rushing yards leader', fmtN(r.RushYds), plink(r), { icon: 'rush', team: r.Team }),
+      tile('Receiving yards leader', fmtN(c.RecYds), plink(c), { icon: 'rec', team: c.Team }),
+      tile(`Top fantasy scorer (${state.scoring === 'PPR' ? 'PPR' : 'half'})`, one(f[pts()]), plink(f), { icon: 'star', team: f.Team, dark: true }),
+      tile('4th-down tries per game', show(bold.AttPerGame), bold.Name.split(' ').pop(), { icon: 'bolt', team: bold.Team }),
+      tile('Flags per game, top crew', show(crew.PenPerGame), crew.Referee, { icon: 'flag' }),
     );
+    // touchdowns by week (grouped bars)
+    const byWk = d3.rollups(D.weekly.filter((w) => w.Id.indexOf('DST') !== 0), (v) => ({ pass: d3.sum(v, (w) => w.PassTD || 0), rush: d3.sum(v, (w) => w.RushTD || 0) }), (w) => w.Week).sort((x, y) => x[0] - y[0]);
+    groupedBars($('home-chart'), byWk.map(([wk, v]) => ({ label: 'Wk ' + wk, a: v.pass, b: v.rush })), ['Passing TDs', 'Rushing TDs']);
+    // games to watch
+    const spot = D.games.filter((g) => g.Week === X.next && g.Spread !== null).sort((x, y) => x.Spread - y.Spread || (y.Total || 0) - (x.Total || 0)).slice(0, 4);
+    $('spot-title').textContent = `Games to watch, Week ${X.next}`;
+    $('spot').replaceChildren(...spot.map((g) => {
+      const c1 = teamColor(g.Away), c2 = teamColor(g.Home);
+      return h('li', null,
+        h('span', { class: 'logo', style: { background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)`, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.5)' } }, ''),
+        h('div', null, h('div', { class: 't' }, `${X.team[g.Away].Nick} @ ${X.team[g.Home].Nick}`), h('div', { class: 's' }, `${g.Day} · ${g.Kickoff}${g.Total ? ' · O/U ' + g.Total : ''}`)),
+        h('span', { class: 'r nfl-pill' }, g.Favorite === 'Pick' ? 'Pick’em' : `${g.Favorite} −${g.Spread}`));
+    }));
     $('this-week-title').textContent = `Week ${X.next} games`;
     $('last-week-title').textContent = `Week ${X.through} results`;
     const line = (g) => (g.Favorite ? (g.Favorite === 'Pick' ? 'Pick' : `${g.Favorite} −${g.Spread}`) : null);
@@ -471,7 +518,6 @@
     const count = new Map();
     state.teams.forEach((tt) => tt.players.forEach((x) => count.set(x.id, (count.get(x.id) || 0) + 1)));
     const shared = [...count].filter(([, n]) => n > 1 && state.teams.length > 1).sort((a, b) => b[1] - a[1]);
-    const tile = (lbl, big, who, tc) => h('div', { class: 'nfl-tile', style: tc ? { '--tc': teamColor(tc) } : null }, h('div', { class: 'lbl' }, lbl), h('div', { class: 'big' }, big), h('div', { class: 'who' }, who));
     const verdictCls = (v) => ({ 'Must start': 'nfl-good', Start: 'nfl-good', 'Flex / borderline': 'nfl-warn', Bench: 'nfl-bad', 'On bye': 'nfl-bad' }[v]);
     const nextTxt = (r) => {
       if (!r.g) return 'BYE';
@@ -488,10 +534,10 @@
     const tbl = h('div', { style: { overflowX: 'auto' } });
     body.replaceChildren(
       h('div', { class: 'nfl-tiles' },
-        tile('Starting lineup estimate', one(startEst), swaps.some((s) => s.start) ? `Best possible: ${one(best)}` : 'Already your best lineup'),
-        tile(`Starters on bye, Week ${X.next}`, byes.length, byes.length ? byes.map((r) => r.p.Player).join(', ') : 'Nobody'),
-        (() => { const hot = d3.greatest(rows.filter((r) => r.l3 !== null && r.slot !== 'IR'), (r) => r.l3 - r.per); return hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), hot.p.Team) : null; })(),
-        shared.length ? tile('On more than one of your teams', shared.length, shared.slice(0, 4).map(([id, n]) => `${X.player[id].Player} (${n})`).join(', ')) : null),
+        tile('Starting lineup estimate', one(startEst), swaps.some((s) => s.start) ? `Best possible: ${one(best)}` : 'Already your best lineup', { icon: 'gauge', dark: true }),
+        tile(`Starters on bye, Week ${X.next}`, byes.length, byes.length ? byes.map((r) => r.p.Player).join(', ') : 'Nobody', { icon: 'moon' }),
+        (() => { const hot = d3.greatest(rows.filter((r) => r.l3 !== null && r.slot !== 'IR'), (r) => r.l3 - r.per); return hot ? tile('Hottest player (last 3 vs season)', signed(Math.round((hot.l3 - hot.per) * 10) / 10), plink(hot.p), { icon: 'fire', team: hot.p.Team }) : null; })(),
+        shared.length ? tile('On more than one of your teams', shared.length, shared.slice(0, 3).map(([id, n]) => `${X.player[id].Player} (${n})`).join(', '), { icon: 'layers' }) : null),
       swapCard,
       h('div', { class: 'nfl-card' }, h('h3', null, `${t.name}: Week ${X.next} leans`), h('p', { class: 'nfl-note' }, 'Est. is a rough points estimate: his season and last-3 averages, nudged by the signals. The lean compares his per-game rank at his position, nudged the same way.'), tbl));
     const slotSel = (r) => {
@@ -678,6 +724,41 @@
     weekAxis(g, rows, x, H - m.b);
   }
 
+
+  function groupedBars(el, rows, names) {
+    el.replaceChildren();
+    const W = el.clientWidth || 600, H = 250, m = { t: 30, r: 6, b: 26, l: 30 };
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
+    const x = d3.scaleBand(rows.map((r) => r.label), [m.l, W - m.r]).paddingInner(0.35).paddingOuter(0.1);
+    const xi = d3.scaleBand(['a', 'b'], [0, x.bandwidth()]).padding(0.28);
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => Math.max(r.a, r.b)) || 1], [H - m.b, m.t]).nice();
+    const g = svg.append('g').style('font-size', '11.5px');
+    y.ticks(4).forEach((v) => { g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', 'var(--cds-chart-grid)'); g.append('text').attr('x', m.l - 8).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').text(v); });
+    const bw = Math.min(10, xi.bandwidth());
+    const pill = g.append('g').style('display', 'none');
+    const pr = pill.append('rect').attr('rx', 11).attr('height', 22).attr('fill', 'var(--cds-surface-popover)');
+    const pt = pill.append('text').attr('fill', 'var(--cds-popover-ink)').attr('text-anchor', 'middle').attr('dy', '0.32em').style('font-weight', 600);
+    const dot = pill.append('circle').attr('r', 3.5).attr('fill', 'var(--cds-surface-popover)');
+    rows.forEach((r) => {
+      [['a', 'var(--accent)'], ['b', 'var(--accent-2)']].forEach(([k, col], i) => {
+        const v = r[k], cx = x(r.label) + xi(k) + xi.bandwidth() / 2;
+        g.append('rect').attr('x', cx - bw / 2).attr('width', bw).attr('y', y(v)).attr('height', Math.max(0, y(0) - y(v))).attr('rx', bw / 2).attr('fill', col)
+          .style('cursor', 'default')
+          .on('pointerenter', () => {
+            const label = `${v} ${names[i].toLowerCase()}`;
+            pt.text(label).attr('x', cx).attr('y', y(v) - 20);
+            const w = pt.node().getComputedTextLength() + 20;
+            pr.attr('x', cx - w / 2).attr('y', y(v) - 31).attr('width', w);
+            dot.attr('cx', cx).attr('cy', y(v) - 5);
+            pill.style('display', null);
+          })
+          .on('pointerleave', () => pill.style('display', 'none'));
+      });
+      g.append('text').attr('x', x(r.label) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').text(r.label);
+    });
+    pill.raise();
+  }
+
   // ---------- COURAGE ----------
   function renderCourage() {
     const el = $('courage-chart');
@@ -763,7 +844,7 @@
     row.append('text').attr('x', lw - 10).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Referee);
     row.append('line').attr('x1', (d) => x(d.PenPerGame2025)).attr('x2', (d) => x(d.PenPerGame)).attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 2);
     row.append('circle').attr('cx', (d) => x(d.PenPerGame2025)).attr('r', 4.5).attr('fill', 'var(--cds-chart-muted)');
-    row.append('circle').attr('cx', (d) => x(d.PenPerGame)).attr('r', 5.5).attr('fill', (d) => (d.Change >= 3 ? 'var(--cds-chart-status-critical)' : COLORS[1]));
+    row.append('circle').attr('cx', (d) => x(d.PenPerGame)).attr('r', 5.5).attr('fill', (d) => (d.Change >= 3 ? 'var(--cds-chart-status-critical)' : 'var(--accent)'));
     row.on('pointermove', (ev, d) => tp.show(ev, d.Referee, `${d.PenPerGame2025} in 2025 → ${d.PenPerGame} in 2026 (${signed(d.Change)})`)).on('pointerleave', () => tp.hide());
     table($('ref-table'), X.crews, [{ k: 'Referee', h: 'Referee', l: true }, { k: 'Games', h: 'Games' }, { k: 'PenPerGame', h: 'Per game' }, { k: 'PenPerGame2025', h: '2025' },
       { k: 'Change', h: 'Change', f: signed, cls: (v) => (v >= 3 ? 'nfl-bad' : v < 0 ? 'nfl-good' : '') }, { k: 'YdsPerGame', h: 'Yds/g' }, { k: 'HomeLean', h: 'Home lean', f: signed }], { sort: 'PenPerGame' });
@@ -811,6 +892,9 @@
     }
     else state.route = PAGES[hash] ? hash : 'home';
     if (state.route !== 'player') document.title = 'NFL Oddities';
+    const TITLES = { home: 'Dashboard', myteam: 'My team', players: 'Players', player: 'Player', courage: 'Coach courage', travel: 'Fatigue & travel', refs: 'Ref crews', wild: 'Wild cards' };
+    $('page-title').textContent = TITLES[state.route];
+    $('takeaway').hidden = state.route !== 'home';
     document.querySelectorAll('.nfl-page').forEach((p) => { p.hidden = p.id !== state.route; });
     document.querySelectorAll('.nfl-tab').forEach((a) => {
       const on = a.dataset.tab === state.route || (state.route === 'player' && a.dataset.tab === 'players');

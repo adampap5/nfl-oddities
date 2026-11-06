@@ -7,39 +7,58 @@
 <meta name="description" content="2026 NFL stats for every player, fantasy points, player trends, fourth-down courage, travel fatigue and referee crew tendencies.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/theme.css?v=343ae2a6c1">
-<link rel="stylesheet" href="assets/app.css?v=5b56daaa62">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1fa02c82e9">
+<link rel="stylesheet" href="assets/app.css?v=3a392c3312">
 <script src="assets/d3.min.js?v=6d64bd2f09"></script>
 </head>
 <body>
 <div id="dash-root">
-<div class="nfl">
-  <header class="nfl-head">
-    <a class="nfl-title" href="#home">NFL Oddities</a>
-    <div class="nfl-head-right">
-      <span class="nfl-asof" id="asof">Loading…</span>
-      <div class="nfl-seg nfl-scoring" role="group" aria-label="Fantasy scoring">
-        <button data-scoring="PPR" aria-pressed="true">PPR</button>
-        <button data-scoring="Half" aria-pressed="false">Half-PPR</button>
-      </div>
+<div class="nfl app">
+  <aside class="side"><div class="side-in">
+    <a class="brand" href="#home"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 26 26 6"/><path d="M8.5 9.5c5-5 12.5-5.5 15-3s2 10-3 15-12.5 5.5-15 3-2-10 3-15z"/><path d="M13 16l3 3M16 13l3 3M10.5 18.5l3 3"/></svg>NFL Oddities</a>
+    <nav class="side-nav" aria-label="Pages">
+        <a class="nfl-tab" href="#home" data-tab="home"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></span>Dashboard</a>
+        <a class="nfl-tab" href="#myteam" data-tab="myteam"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.6.1 4.4 1.9 5 4.5"/></svg></span>My team</a>
+        <a class="nfl-tab" href="#players" data-tab="players"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Players</a>
+        <a class="nfl-tab" href="#courage" data-tab="courage"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>Coach courage</a>
+        <a class="nfl-tab" href="#travel" data-tab="travel"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>Fatigue &amp; travel</a>
+        <a class="nfl-tab" href="#refs" data-tab="refs"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>Ref crews</a>
+        <a class="nfl-tab" href="#wild" data-tab="wild"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg></span>Wild cards</a>
+    </nav>
+    <div class="side-foot">
+      <div class="avatar">A<span class="badge" id="side-count">3</span></div>
+      <div><div class="who">Adam</div><div class="sub" id="side-sub">3 fantasy teams</div></div>
+    </div>
+  </div></aside>
+  <main class="main">
+  <header class="topbar">
+    <div><h1 id="page-title">Dashboard</h1><span class="nfl-asof" id="asof">Loading…</span></div>
+    <div class="nfl-seg nfl-scoring" role="group" aria-label="Fantasy scoring">
+      <button data-scoring="PPR" aria-pressed="true">PPR</button>
+      <button data-scoring="Half" aria-pressed="false">Half-PPR</button>
     </div>
   </header>
   <p class="nfl-take" id="takeaway"></p>
 
-  <nav class="nfl-tabs" role="tablist" aria-label="Pages">
-    <a class="nfl-tab" href="#home" data-tab="home">Home</a>
-    <a class="nfl-tab" href="#myteam" data-tab="myteam">My team</a>
-    <a class="nfl-tab" href="#players" data-tab="players">Players</a>
-    <a class="nfl-tab" href="#courage" data-tab="courage">Coach courage</a>
-    <a class="nfl-tab" href="#travel" data-tab="travel">Fatigue &amp; travel</a>
-    <a class="nfl-tab" href="#refs" data-tab="refs">Ref crews</a>
-    <a class="nfl-tab" href="#wild" data-tab="wild">Wild cards</a>
-  </nav>
-
   <!-- HOME -->
   <section class="nfl-page" id="home" hidden>
-    <div class="nfl-tiles" id="home-tiles"></div>
+    <div class="quick">
+      <div class="quick-intro"><h3>Quick stats</h3><p id="quick-sub">Season leaders and league oddities.</p></div>
+      <div class="nfl-tiles" id="home-tiles" style="display: contents"></div>
+    </div>
+    <div class="nfl-grid split">
+      <div class="nfl-card">
+        <div class="nfl-card-head"><h3>Touchdowns by week</h3><div class="nfl-legend"><span><i style="background: var(--accent)"></i>Passing TDs</span><span><i style="background: var(--accent-2)"></i>Rushing TDs</span></div></div>
+        <p class="nfl-note">League-wide touchdowns each week. Hover a bar for the exact count.</p>
+        <div class="nfl-chart" id="home-chart" style="min-height: 16rem"></div>
+      </div>
+      <div class="nfl-card">
+        <div class="nfl-card-head"><h3 id="spot-title">Games to watch</h3></div>
+        <p class="nfl-note">This week's tightest betting lines.</p>
+        <ul class="spot" id="spot"></ul>
+      </div>
+    </div>
     <div class="nfl-grid wide">
       <div class="nfl-card"><h3 id="this-week-title">This week's games</h3><p class="nfl-note">Kickoffs in Eastern time. Win odds come from the betting moneyline.</p><div class="nfl-scroll" id="upcoming"></div></div>
       <div class="nfl-card"><h3 id="last-week-title">Last week's results</h3><p class="nfl-note">Final scores. Green marks the winner.</p><div class="nfl-scroll" id="results"></div></div>
@@ -222,8 +241,9 @@
     </dl>
   </details>
   <p class="site-foot" id="built"></p>
+  </main>
 </div>
 </div>
-<script src="assets/app.js?v=2dcca91f39"></script>
+<script src="assets/app.js?v=c158ace915"></script>
 </body>
 </html>
