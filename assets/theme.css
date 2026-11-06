@@ -1,0 +1,65 @@
+:root {
+  --font-anthropic-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-anthropic-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --color-fg: #1f1e1d;
+  --color-fg-muted: #6b6a66;
+  --color-bg: #faf9f5;
+  --color-panel: #ffffff;
+  --color-border-line: #e5e3dc;
+  --color-ok: #2f7d4f;
+  --color-warn: #a86413;
+  --color-bad: #b53b2f;
+  --cds-text-secondary: #6b6a66;
+  --cds-border: #e5e3dc;
+  --cds-surface-popover: #ffffff;
+  --cds-shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --cds-chart-grid: #eeece6;
+  --cds-chart-axis: #b9b6ad;
+  --cds-chart-reference: #9a978e;
+  --cds-chart-muted: #c9c6bd;
+  --cds-chart-status-critical: #c8473a;
+  --cds-radius: 8px;
+  --cds-pad-xs: 4px;
+  --cds-pad-sm: 8px;
+  --cds-pad-md: 12px;
+  --cds-pad-lg: 16px;
+  --cds-gap-xs: 4px;
+  --cds-gap-sm: 8px;
+  --cds-gap-md: 16px;
+  --cds-gap-lg: 28px;
+  --cds-font-size-caption: 12.5px;
+  --cds-font-size-body: 15px;
+  --cds-font-size-heading: 17px;
+  --cds-font-size-title: 30px;
+  --cds-font-weight-medium: 550;
+  --cds-dur-slow: 300ms;
+  --cds-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-fg: #ecebe6;
+    --color-fg-muted: #a3a19a;
+    --color-bg: #1b1b19;
+    --color-panel: #242422;
+    --color-border-line: #3a3936;
+    --color-ok: #6fc28e;
+    --color-warn: #e0a54f;
+    --color-bad: #ef7d6f;
+    --cds-text-secondary: #a3a19a;
+    --cds-border: #3a3936;
+    --cds-surface-popover: #2c2c29;
+    --cds-shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --cds-chart-grid: #302f2c;
+    --cds-chart-axis: #5d5b56;
+    --cds-chart-reference: #7d7b74;
+    --cds-chart-muted: #55534e;
+    --cds-chart-status-critical: #ef7d6f;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); -webkit-text-size-adjust: 100%; }
+#dash-root { padding: 24px var(--dash-gutter, 24px) 48px; }
+.dash-select { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background-color: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 6px 30px 6px 10px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; background-size: 5px 5px; background-repeat: no-repeat; cursor: pointer; }
+.site-foot { max-width: 1280px; margin: 32px auto 0; color: var(--color-fg-muted); font-size: 12.5px; }
