@@ -19,8 +19,12 @@ import datetime as dt
 import io
 import json
 import os
+import sys
 import urllib.request
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import models as M  # noqa: E402
 
 BASE = "https://github.com/nflverse/nflverse-data/releases/download"
 FIX = {"LA": "LAR", "WAS": "WSH"}  # match ESPN-style codes used across the site
@@ -466,9 +470,207 @@ def main():
     model = rest_model(fatigue)
     apply_model(fatigue, model)
 
+
+    # ================================================================ models
+    raw_code = {"LAR": "LA", "WSH": "WAS"}
+    games_by_id = {g["game_id"]: g for g in all_games}
+    raw_by_key = {(int(g["week"]), t(g["away_team"]), t(g["home_team"])): g for g in sched}
+    site = {x["Site"]: x for x in stadiums}
+    upcoming_weeks = [g["Week"] for g in games if g["Status"] == "Upcoming"]
+    next_week = min(upcoming_weeks) if upcoming_weeks else None
+    name_of = {p["Id"]: p["Player"] for p in players}
+    pos_of = {p["Id"]: p["Pos"] for p in players}
+
+    def snap_map(year):
+        try:
+            data = rows(fetch(f"snap_counts/snap_counts_{year}.csv", a.cache))
+        except Exception as e:
+            print("snap counts unavailable for", year, e)
+            return {}
+        return {(r["player"], t(r["team"]), int(r["week"])): f(r["offense_pct"]) for r in data if r["game_type"] == "REG"}
+
+    snaps_now, snaps_prev = snap_map(season), snap_map(season - 1)
+    for w in weekly:
+        if pos_of.get(w["Id"]) in ("QB", "RB", "WR", "TE"):
+            sp = snaps_now.get((name_of[w["Id"]], w["Team"], w["Week"]))
+            if sp is not None:
+                w["SnapPct"] = round(sp * 100)
+    weekly_by = defaultdict(list)
+    for w in weekly:
+        weekly_by[w["Id"]].append(w)
+
+    prior_stats = []
+    for yr in (season - 2, season - 1):
+        prior_stats += rows(fetch(f"stats_player/stats_player_week_{yr}.csv", a.cache))
+
+    # ---- weather: forecast for next week's outdoor games, and what wind/temperature have done historically
+    wmodel = M.weather_model(all_games)
+    weather = []
+    if next_week:
+        for g in [x for x in games if x["Week"] == next_week]:
+            raw = raw_by_key.get((g["Week"], g["Away"], g["Home"]))
+            roof = raw["roof"] if raw else ""
+            indoor = roof in ("dome", "closed") or (roof == "" and g["Venue"] in M.INDOOR_SITES)
+            st = site.get(g["Venue"])
+            fc = None
+            if not indoor and st and raw:
+                fc = M.fetch_forecast(st["Lat"], st["Lon"], g["Date"], int(raw["gametime"].split(":")[0]))
+            wind = (fc or {}).get("WindMph")
+            row = {"GameId": g["GameId"], "Week": g["Week"], "Away": g["Away"], "Home": g["Home"], "Day": g["Day"], "Kickoff": g["Kickoff"],
+                   "City": st["City"] if st else "", "Indoors": indoor, "Total": g["Total"], **(fc or {})}
+            if wind is not None and not indoor:
+                row["TotalShift"] = round(wmodel["WindPerMph"] * (wind - M.OUTDOOR_AVG_WIND), 1)
+                row["VsLineShift"] = round(wmodel["WindVsLinePerMph"] * (wind - M.OUTDOOR_AVG_WIND), 1)
+            weather.append(row)
+    wx_by_team = {}
+    for wrow in weather:
+        wx_by_team[wrow["Away"]] = wx_by_team[wrow["Home"]] = wrow
+
+    # ---- projections: fit on the two previous seasons, apply to next week
+    proj_model = M.fit_projection(M.projection_samples(prior_stats, games_by_id))
+    pos_avg = {pos: M.mean(p["PPRPerGame"] for p in players if p["Pos"] == pos and p["GP"] >= 3) for pos in ("K", "DST")}
+
+    def project_player(p, week, wind_for):
+        ws = [w for w in weekly_by[p["Id"]] if w["Week"] < week]
+        if len(ws) < 2:
+            return None
+        pts = [w["PPR"] for w in ws]
+        per, l3 = M.mean(pts), M.mean(pts[-3:])
+        g = next((x for x in games if x["Week"] == week and p["Team"] in (x["Away"], x["Home"])), None)
+        if not g:
+            return {"bye": True}
+        raw = raw_by_key.get((g["Week"], g["Away"], g["Home"]))
+        it = M.implied_total(raw, raw_code.get(p["Team"], p["Team"])) if raw else None
+        opp = g["Home"] if g["Away"] == p["Team"] else g["Away"]
+        opp_it = M.implied_total(raw, raw_code.get(opp, opp)) if raw else None
+        wind = wind_for(g, raw)
+        pos = p["Pos"]
+        if pos in M.PROJ_POS:
+            est = M.project(proj_model, pos, per, l3, it, wind)
+        elif pos == "K":
+            est = 0.6 * per + 0.4 * pos_avg["K"] + (0.15 * (it - 22.5) if it is not None else 0)
+        else:
+            est = 0.6 * per + 0.4 * pos_avg["DST"] - (0.25 * (opp_it - 22.5) if opp_it is not None else 0)
+        rec_pg = M.mean(w.get("Rec", 0) for w in ws)
+        return {"est": max(0.0, est), "estHalf": max(0.0, est - 0.5 * rec_pg), "per": per, "l3": l3, "it": it, "oppIt": opp_it, "wind": wind,
+                "lastWeek": ws[-1]["Week"], "g": g, "opp": opp}
+
+    def wind_forecast(g, raw):
+        w = wx_by_team.get(g["Home"])
+        if w and w["Indoors"]:
+            return 0.0
+        if w and w.get("WindMph") is not None:
+            return w["WindMph"]
+        return M.game_wind(raw) if raw else M.OUTDOOR_AVG_WIND
+
+    projections = []
+    if next_week:
+        for p in players:
+            r = project_player(p, next_week, wind_forecast)
+            if r is None:
+                continue
+            row = {"Id": p["Id"], "Pos": p["Pos"], "Team": p["Team"]}
+            if r.get("bye"):
+                row.update({"Bye": True, "Tags": [["bad", "On bye"]]})
+            else:
+                tags = []
+                pos = p["Pos"]
+                if pos in ("QB", "RB") and r["it"] is not None:
+                    if r["it"] >= 26: tags.append(["good", f"High team total ({r['it']:.1f})"])
+                    elif r["it"] <= 19: tags.append(["bad", f"Low team total ({r['it']:.1f})"])
+                if pos == "DST" and r["oppIt"] is not None:
+                    if r["oppIt"] <= 19: tags.append(["good", f"Opponent projected for {r['oppIt']:.1f}"])
+                    elif r["oppIt"] >= 26: tags.append(["bad", f"Opponent projected for {r['oppIt']:.1f}"])
+                if pos in ("QB", "WR", "TE", "K") and r["wind"] >= 15:
+                    tags.append(["bad", f"Windy ({r['wind']:.0f} mph)"])
+                if through - r["lastWeek"] >= 2:
+                    tags.append(["bad", f"Hasn't played since Week {r['lastWeek']}"])
+                if p["GP"] < 3:
+                    tags.append(["muted", f"Only {p['GP']} games played"])
+                row.update({"EstPPR": round(r["est"], 1), "EstHalf": round(r["estHalf"], 1), "TeamTotal": None if r["it"] is None else round(r["it"], 1),
+                            "Wind": round(r["wind"]), "Opp": r["opp"], "Tags": tags})
+            projections.append(row)
+        M.rank_and_verdict(projections, "EstPPR")
+        M.rank_and_verdict(projections, "EstHalf")
+
+    # ---- track record: the same model, applied week by week to this season's games it never saw
+    track = []
+    for wk in range(3, through + 1):
+        week_rows = []
+        for p in players:
+            if p["Pos"] not in M.PROJ_POS:
+                continue
+            actual = next((w for w in weekly_by[p["Id"]] if w["Week"] == wk), None)
+            if not actual:
+                continue
+            r = project_player(p, wk, lambda g, raw: M.game_wind(raw) if raw else M.OUTDOOR_AVG_WIND)
+            if not r or r.get("bye") or r["it"] is None:
+                continue
+            week_rows.append({"Id": p["Id"], "Pos": p["Pos"], "Week": wk, "EstPPR": round(r["est"], 1), "Base": round(r["per"], 1), "Actual": actual["PPR"]})
+        M.rank_and_verdict(week_rows, "EstPPR")
+        track.extend(week_rows)
+    track_summary = {}
+    if track:
+        mae = lambda k: M.mean(abs(x[k] - x["Actual"]) for x in track)
+        track_summary = {"Weeks": f"3-{through}", "Projections": len(track), "ModelMiss": round(mae("EstPPR"), 2), "AverageMiss": round(mae("Base"), 2),
+                         "ByVerdict": [{"Verdict": v, "Players": len(xs), "AvgActual": round(M.mean(x["Actual"] for x in xs), 1)}
+                                       for v in ("Must start", "Start", "Flex / borderline", "Bench")
+                                       for xs in [[x for x in track if x["VerdictEstPPR"] == v]] if xs]}
+        better = 0; n = 0
+        by_wk = defaultdict(list)
+        for x in track:
+            by_wk[(x["Week"], x["Pos"])].append(x)
+        for lst in by_wk.values():  # within each week and position: did the higher projection score more?
+            lst.sort(key=lambda x: -x["EstPPR"])
+            for i in range(0, len(lst) - 1, 2):
+                a_, b_ = lst[i], lst[i + 1]
+                if a_["Actual"] != b_["Actual"]:
+                    n += 1; better += a_["Actual"] > b_["Actual"]
+        track_summary["CloseCalls"] = {"Pairs": n, "HigherWonPct": round(100 * better / n, 1) if n else None}
+
+    # ---- waiver radar: fit on last season, apply to this season's fringe players
+    rX, rY = M.radar_samples(rows(fetch(f"stats_player/stats_player_week_{season - 1}.csv", a.cache)), snaps_prev)
+    radar_model = {}
+    radar = []
+    if len(rX) > 50:
+        rb, _, rp = M.ols(rX, rY)
+        radar_model = {"n": len(rX), "coef": [round(x, 4) for x in rb], "p": [round(x, 5) for x in rp],
+                       "Features": ["Constant", "Season average", "Touches change (last 2 vs season)", "Snap share change (last 2 vs season)"]}
+        rostered = {"RB": 36, "WR": 48, "TE": 14}
+        for pos, cut in rostered.items():
+            pool = sorted([p for p in players if p["Pos"] == pos and p["GP"] >= 3], key=lambda p: -p["PPRPerGame"])
+            for rank, p in enumerate(pool, start=1):
+                if rank <= cut:
+                    continue
+                ws = weekly_by[p["Id"]]
+                sn = [w["SnapPct"] / 100 for w in ws if "SnapPct" in w]
+                if len(ws) < 4 or len(sn) < 4:
+                    continue
+                touches = [w.get("Targets", 0) + w.get("Carries", 0) for w in ws]
+                per = p["PPRPerGame"]
+                x = [1.0, per, M.mean(touches[-2:]) - M.mean(touches), M.mean(sn[-2:]) - M.mean(sn)]
+                proj3 = sum(c * v for c, v in zip(rb, x))
+                reasons = []
+                if x[3] >= 0.10:
+                    reasons.append(f"Snaps {M.mean(sn[:-2]) * 100:.0f}% → {M.mean(sn[-2:]) * 100:.0f}%")
+                if x[2] >= 2:
+                    reasons.append(f"Touches {M.mean(touches[:-2]):.1f} → {M.mean(touches[-2:]):.1f} a game")
+                radar.append({"Id": p["Id"], "Player": p["Player"], "Team": p["Team"], "Pos": pos, "PosRank": rank, "PerGame": per,
+                              "Proj3": round(proj3, 1), "Gain": round(proj3 - per, 1), "SnapNow": round(M.mean(sn[-2:]) * 100), "SnapBefore": round(M.mean(sn[:-2]) * 100),
+                              "TouchNow": round(M.mean(touches[-2:]), 1), "Reasons": reasons})
+        # rising (projects 0.5+ above his average) and playable in a 12-team league (5.5+ PPR a game next three weeks)
+        radar = sorted([r for r in radar if r["Gain"] >= 0.5 and r["Proj3"] >= 5.5], key=lambda r: -r["Proj3"])[:30]
+
+    # ---- power ratings
+    ratings, hfa, mk_hfa = M.power_ratings(games, [x["Team"] for x in teams])
+
+    models_doc = {"Projection": {**proj_model, "Features": M.FEATURES, "TrainedOn": f"{season - 2}-{season - 1}"}, "Track": track_summary,
+                  "Radar": radar_model, "Weather": wmodel, "Ratings": {"HomeField": hfa, "MarketHomeField": mk_hfa}, "NextWeek": next_week}
+
     os.makedirs(a.out, exist_ok=True)
     fatigue_now = [x for x in fatigue if x["Season"] == season]  # history is only needed to fit the model
-    for name, data in [("fatigue", fatigue_now), ("rest_model", model), ("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta])]:
+    for name, data in [("fatigue", fatigue_now), ("rest_model", model), ("players", players), ("weekly", weekly), ("teams", teams), ("games", games), ("standings", standings), ("meta", [meta]),
+                       ("projections", projections), ("track", track), ("radar", radar), ("weather", weather), ("ratings", ratings), ("models", [models_doc])]:
         with open(os.path.join(a.out, f"{name}.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh, separators=(",", ":"))
         print(f"{name}.json: {len(data)} rows")

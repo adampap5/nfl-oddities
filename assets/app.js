@@ -1,13 +1,13 @@
 /* NFL Oddities — static site app. Loads data/*.json, computes the analysis, renders the current page. */
 (function () {
   'use strict';
-  const FILES = ['my_teams', 'fatigue', 'rest_model', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
+  const FILES = ['my_teams', 'fatigue', 'rest_model', 'projections', 'track', 'radar', 'weather', 'ratings', 'models', 'meta', 'players', 'weekly', 'teams', 'games', 'standings', 'fourth_downs', 'referees', 'referee_notes', 'stadiums'];
   const D = {};
   const X = {}; // derived data
   const state = {
     route: 'home', playerId: null,
     scoring: load('scoring') || 'PPR',
-    cat: 'fantasy', q: '', pos: '', team: '',
+    cat: 'fantasy', q: '', pos: '', team: '', wvPos: '',
     teams: loadTeams(), active: Number(load('active') || 0), myq: '',
   };
   const fmtN = d3.format(',');
@@ -163,6 +163,8 @@
 
   // ---------- derived data ----------
   function derive() {
+    X.proj = Object.fromEntries(D.projections.map((r) => [r.Id, r]));
+    X.models = D.models[0];
     if (!state.teams) state.teams = JSON.parse(JSON.stringify(D.my_teams || [])).filter((t) => t.players && t.players.length);
     if (!state.teams.length) state.teams = [{ name: 'My team', players: [] }];
     X.team = Object.fromEntries(D.teams.map((t) => [t.Team, t]));
@@ -387,59 +389,18 @@
     const fav = g.Favorite === tm ? 1 : g.Favorite === 'Pick' ? 0 : -1;
     return Math.round(((g.Total + fav * g.Spread) / 2) * 10) / 10;
   }
+  // Estimates and leans come from the fitted model in the daily build (data/projections.json).
   function outlook(p) {
     const sc = pts();
     const weeks = X.weekly.get(p.Id) || [];
-    const per = p[sc] / p.GP;
-    const l3w = weeks.slice(-3);
-    const l3 = l3w.length ? d3.mean(l3w, (w) => w[sc]) : null;
+    const per = weeks.length ? d3.mean(weeks, (w) => w[sc]) : 0;
+    const l3 = weeks.length ? d3.mean(weeks.slice(-3), (w) => w[sc]) : null;
+    const pr = X.proj[p.Id];
     const g = D.games.find((x) => x.Week === X.next && (x.Away === p.Team || x.Home === p.Team));
-    const tags = [];
-    let adj = 0;
-    const tag = (cls, text, w) => { tags.push([cls, text]); adj += w; };
-    if (!g) return { p, g: null, per, l3, tags: [['bad', 'On bye']], verdict: 'On bye', rank: null, it: null, fat: null, sortKey: 999, est: 0 };
-    const it = implied(g, p.Team);
-    const wp = g.Away === p.Team ? g.AwayWinProb : g.HomeWinProb;
-    const fat = X.fatigueBy.get(p.Team);
-    if (it !== null && p.Pos !== 'DST') {
-      if (it >= 26) tag('good', `High team total (${it})`, 1);
-      else if (it <= 19) tag('bad', `Low team total (${it})`, -1);
-    }
-    if (p.Pos === 'DST' && it !== null) {
-      const oppTotal = Math.round((g.Total - it) * 10) / 10;
-      if (oppTotal <= 19) tag('good', `Opponent projected for ${oppTotal}`, 1);
-      else if (oppTotal >= 26) tag('bad', `Opponent projected for ${oppTotal}`, -1);
-    }
-    if (wp !== null && wp !== undefined) {
-      if (wp >= 70 && (p.Pos === 'RB' || p.Pos === 'DST' || p.Pos === 'K')) tag('good', 'Big favorite', 1);
-      if (wp <= 30 && p.Pos === 'RB') tag('warn', 'Likely trailing', -1);
-      if (wp <= 30 && (p.Pos === 'WR' || p.Pos === 'TE' || p.Pos === 'QB')) tag('muted', 'Likely throwing late', 0);
-    }
-    if (fat && fat.EdgePts >= 2) tag('good', `Rest edge +${fat.EdgePts}`, 0.5);
-    else if (fat && fat.EdgePts <= -2) tag('warn', `Rest disadvantage ${fat.EdgePts}`, -0.5);
-    if (l3 !== null && weeks.length >= 4) {
-      if (l3 >= per * 1.2) tag('good', 'Hot lately', 0.5);
-      else if (l3 <= per * 0.8) tag('warn', 'Cooling off', -0.5);
-    }
-    if (p.Pos !== 'K' && p.Pos !== 'DST' && p.Pos !== 'QB' && weeks.length >= 4) {
-      const touches = (w) => (w.Targets || 0) + (w.Carries || 0);
-      const u3 = d3.mean(l3w, touches), uAll = d3.mean(weeks, touches);
-      if (uAll >= 4 && u3 >= uAll * 1.2) tag('good', 'Usage rising', 0.5);
-      else if (uAll >= 4 && u3 <= uAll * 0.75) tag('bad', 'Usage falling', -0.5);
-    }
-    const lastWeek = weeks.length ? weeks[weeks.length - 1].Week : 0;
-    if (X.through - lastWeek >= 2 && X.gameOf.has(p.Team + '|' + X.through)) tag('bad', `Hasn’t played since Week ${lastWeek}`, -2);
-    const gap = d3.sum(X.tdLuck.filter((r) => r.Id === p.Id), (r) => r.Gap);
-    if (gap >= 2.5) tag('warn', 'TD-lucky so far', 0);
-    else if (gap <= -2) tag('good', 'Due for TDs', 0.5);
-    // rank among regulars (3+ games) at his position; he's always ranked, even with fewer games
-    const rank = 1 + D.players.filter((q) => q.Pos === p.Pos && q.GP >= 3 && q.Id !== p.Id && q[ppg()] > p[ppg()]).length;
-    if (p.GP < 3) tag('muted', `Only ${p.GP} games played`, 0);
-    const line = START_LINE[p.Pos] || 12;
-    const eff = rank - adj * (line / 6);
-    const verdict = eff <= line * 0.4 ? 'Must start' : eff <= line ? 'Start' : eff <= line * 1.4 ? 'Flex / borderline' : 'Bench';
-    const est = Math.max(0, Math.round((0.6 * per + 0.4 * (l3 ?? per)) * (1 + 0.06 * adj) * 10) / 10);
-    return { p, g, per, l3, tags, verdict, rank, it, fat, sortKey: eff, est };
+    if (!g) return { p, g: null, per, l3, tags: [['bad', 'On bye']], verdict: 'On bye', rank: null, est: 0, sortKey: 999 };
+    if (!pr || pr.Bye) return { p, g, per, l3, tags: [['muted', 'Not enough games to project']], verdict: 'Flex / borderline', rank: null, est: per, sortKey: 500 };
+    const key = sc === 'PPR' ? 'EstPPR' : 'EstHalf';
+    return { p, g, per, l3, tags: pr.Tags || [], verdict: pr['Verdict' + key], rank: pr['Rank' + key], est: pr[key], it: pr.TeamTotal, sortKey: pr['Rank' + key] };
   }
   function lineupSwaps(rows) {
     const starters = rows.filter((r) => SLOT_FITS[r.slot]);
@@ -529,6 +490,25 @@
       { k: 'tags', h: 'Signals', l: true, s: false, r: (r) => h('span', null, r.tags.length ? r.tags.map(([c, x]) => h('span', { class: 'nfl-tag ' + c }, x)) : h('span', { class: 'nfl-note' }, 'Nothing unusual')), cls: () => 'wrap' },
       { k: 'x', h: '', s: false, r: (r) => h('button', { class: 'nfl-x', title: 'Remove from this team', 'aria-label': 'Remove ' + r.Player, onclick: () => { t.players = t.players.filter((y) => y.id !== r.Id); renderMyTeam(); } }, '×') },
     ], { sortable: false, group: (r) => (SLOT_FITS[r.slot] ? 'Starters' : r.slot === 'IR' ? 'Injured reserve' : 'Bench') });
+    renderTrack(t);
+  }
+  function renderTrack(t) {
+    const T = X.models.Track;
+    if (!T || !T.Projections) return;
+    $('tr-note').textContent = `The same model, run on every week of this season before the games were played (weeks ${T.Weeks}, ${fmtN(T.Projections)} player-games). PPR scoring.`;
+    const v = Object.fromEntries(T.ByVerdict.map((x) => [x.Verdict, x]));
+    $('tr-tiles').replaceChildren(
+      tile('"Must start" players averaged', one(v['Must start']?.AvgActual), `vs ${one(v.Bench?.AvgActual)} for "Bench"`, { icon: 'star', dark: true }),
+      tile('Higher estimate won the close call', T.CloseCalls?.HigherWonPct + '%', `${fmtN(T.CloseCalls?.Pairs)} matchups of similar players`, { icon: 'gauge' }),
+      tile('Average miss per player', one(T.ModelMiss) + ' pts', `vs ${one(T.AverageMiss)} using season average alone`, { icon: 'layers' }),
+    );
+    const wk = X.through;
+    $('tr-last-title').textContent = `${t.name}: Week ${wk} estimates vs what happened`;
+    const mine = new Set(t.players.map((x) => x.id));
+    const rows = D.track.filter((r) => r.Week === wk && mine.has(r.Id)).map((r) => ({ ...r, Player: X.player[r.Id].Player, Team: X.player[r.Id].Team, Diff: Math.round((r.Actual - r.EstPPR) * 10) / 10 }))
+      .sort((a, b) => b.Actual - a.Actual);
+    table($('tr-last'), rows, [{ k: 'Player', h: 'Player', l: true, r: plink }, C.team, { k: 'VerdictEstPPR', h: 'Lean', l: true }, { k: 'EstPPR', h: 'Est.', f: one }, { k: 'Actual', h: 'Actual', f: one },
+      { k: 'Diff', h: 'Diff', f: signed, cls: (x) => (x >= 5 ? 'nfl-good' : x <= -5 ? 'nfl-bad' : '') }], { sortable: false, empty: 'None of this team\u2019s players had an estimate that week (kickers, defenses and players with under 2 games aren\u2019t graded).' });
   }
 
   // ---------- PLAYER PAGE ----------
@@ -560,7 +540,8 @@
           h('div', null, h('div', { class: 'k' }, state.scoring === 'PPR' ? 'PPR points' : 'Half-PPR points'), h('div', { class: 'v' }, one(p[sc]))),
           h('div', null, h('div', { class: 'k' }, 'Per game'), h('div', { class: 'v' }, one(per))),
           h('div', null, h('div', { class: 'k' }, 'Last 3 avg'), h('div', { class: 'v' }, l3 === null ? '—' : one(l3)), h('div', { class: 'k' }, trend)),
-          h('div', null, h('div', { class: 'k' }, 'Position rank'), h('div', { class: 'v' }, p.Pos + p['Rank' + sc])))),
+          h('div', null, h('div', { class: 'k' }, 'Position rank'), h('div', { class: 'v' }, p.Pos + p['Rank' + sc])),
+          (() => { const pr = X.proj[p.Id]; const k = sc === 'PPR' ? 'EstPPR' : 'EstHalf'; return pr && !pr.Bye ? h('div', null, h('div', { class: 'k' }, `Week ${X.next} estimate`), h('div', { class: 'v' }, one(pr[k])), h('div', { class: 'k' }, pr['Verdict' + k])) : null; })())),
       h('div', { class: 'nfl-card', style: { marginBottom: 'var(--cds-gap-md)' } }, h('h3', null, 'Season line'), h('div', { class: 'nfl-statgrid', style: { marginTop: '8px' } }, statTiles(p))),
       h('div', { class: 'nfl-grid wide' },
         h('div', { class: 'nfl-card' }, h('h3', null, 'Fantasy points by week'), h('p', { class: 'nfl-note' }, 'Dashed line is his season average. Hover a bar for that game’s stat line.'), h('div', { class: 'nfl-chart auto', id: 'p-points' })),
@@ -731,6 +712,83 @@
     pill.raise();
   }
 
+
+  // ---------- WAIVERS ----------
+  function renderWaivers() {
+    const M = X.models.Radar;
+    const owned = new Set(state.teams.flatMap((t) => t.players.map((x) => x.id)));
+    const per10 = (M.coef[3] * 0.1).toFixed(1);
+    $('wv-note').replaceChildren('Players likely free in a 12-team league whose role is growing. ', h('b', null, 'Next 3'),
+      ` is projected PPR points per game over the next three weeks, from a model fit on last season. For players at this level, a rising snap share was the clearest early sign of more points: each extra 10% of snaps was worth about ${per10} points a game. Players already on your teams are left out.`);
+    document.querySelectorAll('#wv-pos button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pos === state.wvPos)));
+    const rows = D.radar.filter((r) => !owned.has(r.Id) && (!state.wvPos || r.Pos === state.wvPos));
+    table($('wv-table'), rows, [
+      { k: 'Player', h: 'Player', l: true, r: (r) => h('span', null, plink(r), h('span', { class: 'sub2' }, chip(r.Team), ' ', r.Pos, ' · ', r.Pos + r.PosRank)) },
+      { k: 'Proj3', h: 'Next 3', f: one, cls: () => 'nfl-strong' }, { k: 'PerGame', h: 'Season avg', f: one },
+      { k: 'SnapNow', h: 'Snaps', r: (r) => `${r.SnapBefore}% → ${r.SnapNow}%`, sm: true },
+      { k: 'TouchNow', h: 'Touches (last 2)', f: one, sm: true },
+      { k: 'Reasons', h: 'Why', l: true, s: false, cls: () => 'wrap', r: (r) => h('span', null, r.Reasons.length ? r.Reasons.map((x) => h('span', { class: 'nfl-tag good' }, x)) : h('span', { class: 'nfl-note', style: { margin: 0 } }, 'Steady bigger role')) },
+      { k: 'add', h: '', s: false, r: (r) => h('button', { class: 'nfl-btn', title: `Add to ${team().name}`, onclick: (e) => { team().players.push({ id: r.Id, slot: 'Bench' }); saveTeams(); e.target.textContent = 'Added'; e.target.disabled = true; } }, '+ Add') },
+    ], { sort: 'Proj3', empty: 'Nobody new on the radar for this position.' });
+  }
+
+  // ---------- POWER RATINGS ----------
+  function renderRatings() {
+    const R = D.ratings;
+    const el = $('pr-chart');
+    el.replaceChildren();
+    const W = el.clientWidth || 600, bh = 15, gap = 5, m = { t: 4, r: 40, b: 4, l: 48 };
+    const H = m.t + m.b + R.length * (bh + gap);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
+    const ext = d3.max(R, (d) => Math.abs(d.Rating)) || 1;
+    const x = d3.scaleLinear([-ext, ext], [m.l, W - m.r]);
+    const g = svg.append('g').style('font-size', '11.5px');
+    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', H).attr('stroke', 'var(--cds-chart-axis)');
+    const tp = tip(el);
+    const row = g.selectAll('g.r').data(R).join('g').attr('transform', (d, i) => `translate(0,${m.t + i * (bh + gap)})`);
+    row.append('text').attr('x', m.l - 8).attr('y', bh / 2).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Team);
+    row.append('rect').attr('x', (d) => x(Math.min(0, d.Rating))).attr('width', (d) => Math.max(2, Math.abs(x(d.Rating) - x(0)))).attr('height', bh).attr('rx', bh / 2).attr('fill', (d) => teamColor(d.Team));
+    row.append('text').attr('x', (d) => (d.Rating >= 0 ? x(d.Rating) + 6 : x(d.Rating) - 6)).attr('text-anchor', (d) => (d.Rating >= 0 ? 'start' : 'end')).attr('y', bh / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => signed(d.Rating));
+    row.on('pointermove', (ev, d) => tp.show(ev, X.team[d.Team].Name, [`${signed(d.Rating)} rating · ${d.W}-${d.L}${d.T ? '-' + d.T : ''}`, `Offense ${signed(d.Off)} · Defense ${signed(d.Def)}`])).on('pointerleave', () => tp.hide());
+    const luck = [...R].sort((a, b) => Math.abs(b.Luck) - Math.abs(a.Luck)).slice(0, 5);
+    $('pr-luck').replaceChildren(...luck.map((d) => h('li', null,
+      h('span', { class: 'logo', style: { background: teamColor(d.Team), color: inkOn(teamColor(d.Team)) } }, d.Team),
+      h('div', null, h('div', { class: 't' }, X.team[d.Team].Name), h('div', { class: 's' }, `${d.W}-${d.L} record, plays like ${one(d.PythW)}-${one(d.W + d.L + d.T - d.PythW)}`)),
+      h('span', { class: 'r nfl-pill' + (d.Luck > 0 ? ' dark' : '') }, d.Luck > 0 ? `${one(d.Luck)} lucky wins` : `${one(-d.Luck)} unlucky`))));
+    table($('pr-table'), R, [
+      { k: 'Rank', h: '#', l: true }, { k: 'Team', h: 'Team', l: true, r: (d) => h('span', null, chip(d.Team), ' ', h('span', { class: 'nfl-hide-sm' }, X.team[d.Team].Nick)) },
+      { k: 'W', h: 'Record', r: (d) => `${d.W}-${d.L}${d.T ? '-' + d.T : ''}`, v: (d) => d.W - d.L },
+      { k: 'Rating', h: 'Rating', f: signed, cls: () => 'nfl-strong' }, { k: 'Off', h: 'Off', f: signed, sm: true }, { k: 'Def', h: 'Def', f: signed, sm: true },
+      { k: 'Market', h: 'Market', f: signed, sm: true },
+      { k: 'Luck', h: 'Luck', f: (v) => signed(one(v)), cls: (v) => (v >= 1 ? 'nfl-warn' : v <= -1 ? 'nfl-good' : '') },
+      { k: 'SOSPlayed', h: 'Schedule so far', f: signed, sm: true }, { k: 'SOSLeft', h: 'Schedule left', f: signed, cls: (v) => (v >= 1.5 ? 'nfl-bad' : v <= -1.5 ? 'nfl-good' : '') },
+    ], { sort: 'Rating' });
+  }
+
+  // ---------- WEATHER ----------
+  function renderWeather() {
+    const Wm = X.models.Weather;
+    $('wx-title').textContent = `Week ${X.next} weather`;
+    const rows = D.weather;
+    const haveFc = rows.some((r) => r.WindMph !== undefined && r.WindMph !== null);
+    $('wx-note').textContent = haveFc ? 'Forecast at kickoff, refreshed every morning. Wind is the number to watch.' : 'Forecasts appear once games are within about two weeks; check back closer to kickoff.';
+    table($('wx-table'), rows, [
+      { k: 'Away', h: 'Game', l: true, r: (r) => h('span', null, chip(r.Away), ' @ ', chip(r.Home)) },
+      { k: 'Day', h: 'When', l: true, r: (r) => `${r.Day.split(' ')[0]} ${r.Kickoff}`, sm: true },
+      { k: 'City', h: 'Where', l: true, r: (r) => (r.Indoors ? 'Indoors' : r.City.split(',')[0]), sm: true },
+      { k: 'WindMph', h: 'Wind', r: (r) => (r.Indoors ? '—' : r.WindMph == null ? '…' : `${Math.round(r.WindMph)} mph${r.GustMph ? ' (gusts ' + Math.round(r.GustMph) + ')' : ''}`), cls: (v) => (v >= 15 ? 'nfl-bad nfl-strong' : '') },
+      { k: 'TempF', h: 'Temp', r: (r) => (r.Indoors ? '—' : r.TempF == null ? '…' : `${Math.round(r.TempF)}°`) },
+      { k: 'PrecipPct', h: 'Rain/snow', r: (r) => (r.Indoors || r.PrecipPct == null ? '—' : r.PrecipPct + '%'), sm: true },
+      { k: 'Total', h: 'O/U' },
+      { k: 'VsLineShift', h: 'Wind vs the O/U', r: (r) => (r.VsLineShift == null ? '—' : signed(r.VsLineShift) + ' pts'), cls: (v) => (v <= -1 ? 'nfl-bad' : '') },
+    ], { sortable: false });
+    $('wx-sample').textContent = `${fmtN(Wm.Games)} outdoor games since ${Wm.Since}.`;
+    const sig = (p) => (p < 0.05 ? 'real' : p < 0.1 ? 'likely' : 'no clear');
+    $('wx-summary').replaceChildren('Wind is ', h('b', null, sig(Wm.WindP) === 'real' ? 'a real effect' : 'not a clear effect'), `: every mph costs about ${Math.abs(Wm.WindPerMph).toFixed(2)} total points, and the over/under only partly prices it in, so games land about ${Math.abs(Wm.WindVsLinePerMph * 10).toFixed(1)} points under the line for every 10 mph above normal. Temperature barely moves scoring and the line already accounts for it. For fantasy, wind mainly hurts receivers and kickers.`);
+    table($('wx-bins'), Wm.Bins, [{ k: 'Kind', h: '', l: true }, { k: 'Bin', h: 'Conditions', l: true }, { k: 'Games', h: 'Games', f: fmtN }, { k: 'AvgTotal', h: 'Avg points', f: one },
+      { k: 'VsLine', h: 'Vs the O/U', f: signed, cls: (v) => (v <= -1 ? 'nfl-bad' : v >= 1 ? 'nfl-good' : '') }, { k: 'UnderPct', h: 'Went under', f: (v) => v + '%', sm: true }], { sortable: false });
+  }
+
   // ---------- COURAGE ----------
   function renderCourage() {
     const el = $('courage-chart');
@@ -833,7 +891,7 @@
   }
 
   // ---------- routing ----------
-  const PAGES = { home: renderHome, myteam: renderMyTeam, players: renderPlayers, player: renderPlayer, courage: renderCourage, travel: renderTravel, refs: renderRefs, wild: renderWild };
+  const PAGES = { home: renderHome, myteam: renderMyTeam, waivers: renderWaivers, ratings: renderRatings, weather: renderWeather, players: renderPlayers, player: renderPlayer, courage: renderCourage, travel: renderTravel, refs: renderRefs, wild: renderWild };
   function route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash.startsWith('player/')) { state.route = 'player'; state.playerId = hash.slice(7); }
@@ -848,7 +906,7 @@
     }
     else state.route = PAGES[hash] ? hash : 'home';
     if (state.route !== 'player') document.title = 'NFL Oddities';
-    const TITLES = { home: 'Dashboard', myteam: 'My team', players: 'Players', player: 'Player', courage: 'Coach courage', travel: 'Rest & travel', refs: 'Ref crews', wild: 'Wild cards' };
+    const TITLES = { home: 'Dashboard', myteam: 'My team', waivers: 'Waivers', ratings: 'Power ratings', weather: 'Weather', players: 'Players', player: 'Player', courage: 'Coach courage', travel: 'Rest & travel', refs: 'Ref crews', wild: 'Wild cards' };
     $('page-title').textContent = TITLES[state.route];
     $('takeaway').hidden = state.route !== 'home';
     document.querySelectorAll('.nfl-page').forEach((p) => { p.hidden = p.id !== state.route; });
@@ -889,6 +947,7 @@
     $('search').addEventListener('input', (e) => { state.q = e.target.value.trim(); render(); });
     $('pos-filter').addEventListener('change', (e) => { state.pos = e.target.value; if (state.pos === 'K') state.cat = 'kicking'; else if (state.pos === 'DST') state.cat = 'defense'; else if (['kicking', 'defense'].includes(state.cat)) state.cat = 'fantasy'; render(); });
     $('team-filter').addEventListener('change', (e) => { state.team = e.target.value; render(); });
+    document.querySelectorAll('#wv-pos button').forEach((b) => b.addEventListener('click', () => { state.wvPos = b.dataset.pos; renderWaivers(); }));
     $('my-search').addEventListener('input', (e) => { state.myq = e.target.value.trim(); renderMyTeam(); });
     $('my-new').addEventListener('click', () => {
       const name = (prompt('Name for the new team?', `Team ${state.teams.length + 1}`) || '').trim();

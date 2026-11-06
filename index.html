@@ -21,7 +21,10 @@
     <nav class="side-nav" aria-label="Pages">
         <a class="nfl-tab" href="#home" data-tab="home"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></span>Dashboard</a>
         <a class="nfl-tab" href="#myteam" data-tab="myteam"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.6.1 4.4 1.9 5 4.5"/></svg></span>My team</a>
+        <a class="nfl-tab" href="#waivers" data-tab="waivers"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></span>Waivers</a>
         <a class="nfl-tab" href="#players" data-tab="players"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Players</a>
+        <a class="nfl-tab" href="#ratings" data-tab="ratings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Power ratings</a>
+        <a class="nfl-tab" href="#weather" data-tab="weather"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 12h16a3 3 0 1 1-3 3"/><path d="M3 16h8"/></svg></span>Weather</a>
         <a class="nfl-tab" href="#courage" data-tab="courage"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>Coach courage</a>
         <a class="nfl-tab" href="#travel" data-tab="travel"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>Rest &amp; travel</a>
         <a class="nfl-tab" href="#refs" data-tab="refs"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>Ref crews</a>
@@ -124,12 +127,65 @@
       <div class="nfl-results" id="my-results" hidden style="margin: var(--cds-gap-sm) 0 0"></div>
     </div>
     <div id="my-body"></div>
+    <div class="nfl-card" style="margin-top: var(--cds-gap-md)">
+      <h3>How these estimates have done</h3>
+      <p class="nfl-note" id="tr-note"></p>
+      <div class="nfl-tiles" id="tr-tiles" style="margin-bottom: 14px"></div>
+      <h3 style="font-size: 15px; margin-top: 6px" id="tr-last-title">Your players last week</h3>
+      <div id="tr-last"></div>
+    </div>
   </section>
 
   <!-- PLAYER PAGE -->
   <section class="nfl-page" id="player" hidden>
     <a class="nfl-back" href="#players">← All players</a>
     <div id="player-body"></div>
+  </section>
+
+  <!-- WAIVERS -->
+  <section class="nfl-page" id="waivers" hidden>
+    <div class="nfl-card">
+      <div class="nfl-card-head"><h3>Waiver radar</h3>
+        <div class="nfl-seg" id="wv-pos" role="group" aria-label="Position"><button data-pos="" aria-pressed="true">All</button><button data-pos="RB" aria-pressed="false">RB</button><button data-pos="WR" aria-pressed="false">WR</button><button data-pos="TE" aria-pressed="false">TE</button></div></div>
+      <p class="nfl-note" id="wv-note"></p>
+      <div id="wv-table"></div>
+    </div>
+  </section>
+
+  <!-- POWER RATINGS -->
+  <section class="nfl-page" id="ratings" hidden>
+    <div class="nfl-grid split">
+      <div class="nfl-card">
+        <h3>Power ratings</h3>
+        <p class="nfl-note">Points better or worse than an average team on a neutral field, from every score this season, adjusted for who each team has played.</p>
+        <div class="nfl-chart auto" id="pr-chart"></div>
+      </div>
+      <div class="nfl-card">
+        <h3>Better or worse than their record</h3>
+        <p class="nfl-note">Wins minus the wins their points scored and allowed usually produce. Lucky teams tend to come back to earth.</p>
+        <ul class="spot" id="pr-luck"></ul>
+      </div>
+    </div>
+    <div class="nfl-card">
+      <h3>All 32 teams</h3>
+      <p class="nfl-note">Off and Def are points added on each side of the ball (higher is better for both). Market is the same scale read from the betting lines. Schedule columns are the average rating of opponents.</p>
+      <div class="nfl-scroll tall" id="pr-table"></div>
+    </div>
+  </section>
+
+  <!-- WEATHER -->
+  <section class="nfl-page" id="weather" hidden>
+    <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
+      <h3 id="wx-title">This week's weather</h3>
+      <p class="nfl-note" id="wx-note">Forecast at kickoff for outdoor games, refreshed every morning.</p>
+      <div id="wx-table"></div>
+    </div>
+    <div class="nfl-card">
+      <h3>What weather actually does</h3>
+      <p class="nfl-note" id="wx-sample"></p>
+      <p class="rest-summary" id="wx-summary"></p>
+      <div id="wx-bins"></div>
+    </div>
   </section>
 
   <!-- COURAGE -->
@@ -236,6 +292,6 @@
   </main>
 </div>
 </div>
-<script src="assets/app.js?v=ccdb6f1899"></script>
+<script src="assets/app.js?v=61e6b0b911"></script>
 </body>
 </html>
