@@ -4,279 +4,102 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NFL Oddities</title>
-<meta name="description" content="2026 NFL stats, fantasy points, fourth-down courage, travel fatigue and referee crew tendencies.">
+<meta name="description" content="2026 NFL stats for every player, fantasy points, player trends, fourth-down courage, travel fatigue and referee crew tendencies.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/theme.css">
+<link rel="stylesheet" href="assets/app.css">
 <script src="assets/d3.min.js"></script>
-<script src="assets/dash.js"></script>
 </head>
 <body>
 <div id="dash-root">
-<style>
-#dash-root { --dash-gutter: clamp(12px, 3vw, 32px); }
-.nfl { font-family: var(--font-anthropic-sans); color: var(--color-fg); max-width: 1280px; margin-inline: auto; }
-.nfl-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--cds-gap-sm); margin-bottom: var(--cds-gap-sm); }
-.nfl-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
-.nfl-asof { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-.nfl-take { margin: 0 0 var(--cds-gap-md); color: var(--color-fg); font-size: var(--cds-font-size-body); max-width: 70ch; }
-.nfl b { font-weight: 600; }
-.nfl-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--color-border-line); margin-bottom: var(--cds-gap-lg); scrollbar-width: none; }
-.nfl-tab { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--cds-pad-sm) var(--cds-pad-md); font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg-muted); cursor: pointer; white-space: nowrap; }
-.nfl-tab[aria-selected="true"] { color: var(--color-fg); border-bottom-color: var(--color-fg); font-weight: 600; }
-.nfl-tab:hover { color: var(--color-fg); }
-.nfl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--cds-gap-md); margin-bottom: var(--cds-gap-md); }
-.nfl-grid.wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); }
-.nfl-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
-.nfl-card h3 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0 0 2px; }
-.nfl-note { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0 0 var(--cds-gap-sm); }
-.nfl-h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: var(--cds-gap-lg) 0 var(--cds-gap-sm); }
-.nfl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--cds-gap-md); margin-bottom: var(--cds-gap-md); }
-.nfl-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); min-width: 0; }
-.nfl-tile .lbl { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-.nfl-tile .big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.2; margin: 2px 0; }
-.nfl-tile .who { font-size: var(--cds-font-size-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nfl-scroll { max-height: 34rem; overflow: auto; }
-.nfl-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
-.nfl-table th { position: sticky; top: 0; background: var(--color-panel); text-align: right; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); border-bottom: 1px solid var(--color-border-line); padding: 6px 8px; white-space: nowrap; }
-.nfl-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--cds-chart-grid); white-space: nowrap; }
-.nfl-table th:first-child, .nfl-table td:first-child { text-align: left; }
-.nfl-table .l { text-align: left; }
-.nfl-table tbody tr:hover { background: color-mix(in srgb, var(--color-fg) 5%, transparent); }
-.nfl-sort { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-.nfl-sort:hover { color: var(--color-fg); }
-th[aria-sort] .nfl-sort { color: var(--color-fg); }
-.nfl-controls { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; margin-bottom: var(--cds-gap-md); }
-.nfl-search { font: inherit; font-size: var(--cds-font-size-body); padding: 6px 10px; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); min-width: 14rem; flex: 1 1 14rem; max-width: 24rem; }
-.nfl-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
-.nfl-seg button { appearance: none; border: 0; background: var(--color-bg); color: var(--color-fg-muted); font: inherit; font-size: var(--cds-font-size-caption); padding: 6px 12px; cursor: pointer; }
-.nfl-seg button + button { border-left: 1px solid var(--color-border-line); }
-.nfl-seg button[aria-pressed="true"] { background: var(--color-panel); color: var(--color-fg); font-weight: 600; }
-.nfl-pcard { min-height: 0; }
-.nfl-pcard:empty { display: none; }
-.nfl-pc { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--cds-gap-sm); margin-top: var(--cds-gap-sm); }
-.nfl-pc .k { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-.nfl-pc .v { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-heading); font-variant-numeric: tabular-nums; }
-.nfl-pc-name { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-title); }
-.nfl-chart { position: relative; min-height: 22rem; }
-.nfl-chart.short { min-height: 16rem; }
-.nfl-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
-.nfl-tip .t { color: var(--cds-text-secondary); }
-.nfl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: var(--cds-font-size-caption); border: 1px solid var(--color-border-line); }
-.nfl-good { color: var(--color-ok); }
-.nfl-bad { color: var(--color-bad); }
-.nfl-warn { color: var(--color-warn); }
-.nfl details { margin-top: var(--cds-gap-lg); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-.nfl details summary { cursor: pointer; }
-.nfl dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: var(--cds-gap-sm) 0; }
-.nfl dt { color: var(--color-fg); }
-.nfl dd { margin: 0; }
-[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
-[data-dash-source-state=empty] { color: transparent; }
-@media (max-width: 640px) { .nfl-hide-sm { display: none; } }
-</style>
-
 <div class="nfl">
-  <div class="nfl-head">
-    <h1 class="nfl-title">NFL Oddities</h1>
-    <span class="nfl-asof">2026 season · stats through Week <b data-draw="through" data-source="headlines" data-field="ThroughWeek" data-row="0">—</b></span>
-  </div>
-  <p class="nfl-take">Week <b data-draw="nextweek" data-source="headlines" data-field="NextWeek" data-row="0">—</b> starts with <b data-draw="nextgame" data-source="headlines" data-field="NextGame" data-row="0">—</b>. The most travel-worn team this week is <b data-draw="tired" data-source="headlines" data-field="MostFatigued" data-row="0">—</b>, and <b data-draw="flagcrew" data-source="headlines" data-field="FlagCrew" data-row="0">—</b>'s crew is throwing the most flags in the league.</p>
+  <header class="nfl-head">
+    <a class="nfl-title" href="#home">NFL Oddities</a>
+    <div class="nfl-head-right">
+      <span class="nfl-asof" id="asof">Loading…</span>
+      <div class="nfl-seg nfl-scoring" role="group" aria-label="Fantasy scoring">
+        <button data-scoring="PPR" aria-pressed="true">PPR</button>
+        <button data-scoring="Half" aria-pressed="false">Half-PPR</button>
+      </div>
+    </div>
+  </header>
+  <p class="nfl-take" id="takeaway"></p>
 
-  <nav class="nfl-tabs" role="tablist" aria-label="Dashboard pages">
-    <button class="nfl-tab" role="tab" data-tab="home" aria-selected="true">Home</button>
-    <button class="nfl-tab" role="tab" data-tab="players" aria-selected="false">Player stats</button>
-    <button class="nfl-tab" role="tab" data-tab="courage" aria-selected="false">Coach courage</button>
-    <button class="nfl-tab" role="tab" data-tab="travel" aria-selected="false">Fatigue &amp; travel</button>
-    <button class="nfl-tab" role="tab" data-tab="refs" aria-selected="false">Ref crews</button>
-    <button class="nfl-tab" role="tab" data-tab="wild" aria-selected="false">Wild cards</button>
+  <nav class="nfl-tabs" role="tablist" aria-label="Pages">
+    <a class="nfl-tab" href="#home" data-tab="home">Home</a>
+    <a class="nfl-tab" href="#players" data-tab="players">Players</a>
+    <a class="nfl-tab" href="#courage" data-tab="courage">Coach courage</a>
+    <a class="nfl-tab" href="#travel" data-tab="travel">Fatigue &amp; travel</a>
+    <a class="nfl-tab" href="#refs" data-tab="refs">Ref crews</a>
+    <a class="nfl-tab" href="#wild" data-tab="wild">Wild cards</a>
   </nav>
 
   <!-- HOME -->
-  <section class="nfl-page" id="home">
-    <div class="nfl-tiles">
-      <div class="nfl-tile"><div class="lbl">Passing yards leader</div><div class="big" data-draw="h-py" data-source="headlines" data-field="TopPasserYds" data-row="0">—</div><div class="who" data-draw="h-pn" data-source="headlines" data-field="TopPasser" data-row="0">—</div></div>
-      <div class="nfl-tile"><div class="lbl">Rushing yards leader</div><div class="big" data-draw="h-ry" data-source="headlines" data-field="TopRusherYds" data-row="0">—</div><div class="who" data-draw="h-rn" data-source="headlines" data-field="TopRusher" data-row="0">—</div></div>
-      <div class="nfl-tile"><div class="lbl">Receiving yards leader</div><div class="big" data-draw="h-cy" data-source="headlines" data-field="TopReceiverYds" data-row="0">—</div><div class="who" data-draw="h-cn" data-source="headlines" data-field="TopReceiver" data-row="0">—</div></div>
-      <div class="nfl-tile"><div class="lbl">Top PPR scorer</div><div class="big" data-draw="h-fy" data-source="headlines" data-field="TopPPR" data-row="0">—</div><div class="who" data-draw="h-fn" data-source="headlines" data-field="TopPPRPlayer" data-row="0">—</div></div>
-      <div class="nfl-tile"><div class="lbl">Most 4th-down tries per game</div><div class="big" data-draw="h-4y" data-source="headlines" data-field="BoldestRate" data-row="0">—</div><div class="who" data-draw="h-4n" data-source="headlines" data-field="BoldestTeam" data-row="0">—</div></div>
-      <div class="nfl-tile"><div class="lbl">Flag-happiest crew (per game)</div><div class="big" data-draw="h-ry2" data-source="headlines" data-field="FlagCrewRate" data-row="0">—</div><div class="who" data-draw="h-rn2" data-source="headlines" data-field="FlagCrew" data-row="0">—</div></div>
-    </div>
-
+  <section class="nfl-page" id="home" hidden>
+    <div class="nfl-tiles" id="home-tiles"></div>
     <div class="nfl-grid wide">
-      <div class="nfl-card" id="this-week">
-        <h3>This week's games</h3>
-        <p class="nfl-note">Kickoffs in Eastern time. Win probability from the sports data feed, where it has one.</p>
-        <div class="nfl-scroll">
-          <table class="nfl-table" data-source="games" data-row-key="GameId">
-            <thead><tr><th data-field="Day">Day</th><th data-field="Kickoff">Kickoff</th><th data-field="Away" class="l">Away</th><th data-field="AwayWinProb">Win %</th><th data-field="Home" class="l">Home</th><th data-field="HomeWinProb">Win %</th><th data-field="Window" class="l nfl-hide-sm">Slot</th></tr></thead>
-            <tbody data-draw="upcoming"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="nfl-card" id="last-week">
-        <h3>Last week's results</h3>
-        <p class="nfl-note">Final scores from the most recent completed week.</p>
-        <div class="nfl-scroll">
-          <table class="nfl-table" data-source="games" data-row-key="GameId">
-            <thead><tr><th data-field="Away" class="l">Away</th><th data-field="AwayScore">Pts</th><th data-field="Home" class="l">Home</th><th data-field="HomeScore">Pts</th><th data-field="Window" class="l nfl-hide-sm">Slot</th></tr></thead>
-            <tbody data-draw="results"></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="nfl-card"><h3 id="this-week-title">This week's games</h3><p class="nfl-note">Kickoffs in Eastern time. Win odds come from the betting moneyline.</p><div class="nfl-scroll" id="upcoming"></div></div>
+      <div class="nfl-card"><h3 id="last-week-title">Last week's results</h3><p class="nfl-note">Final scores. Green marks the winner.</p><div class="nfl-scroll" id="results"></div></div>
     </div>
-
     <h2 class="nfl-h2">Leaderboards</h2>
     <div class="nfl-grid">
-      <div class="nfl-card" id="lead-pass"><h3>Passing yards</h3><p class="nfl-note">Season totals, top 5.</p>
-        <table class="nfl-table" data-source="passing" data-row-key="Player"><thead><tr><th data-field="Player">Player</th><th data-field="Team">Team</th><th data-field="Yds">Yds</th><th data-field="TD">TD</th></tr></thead><tbody data-draw="lead-pass"></tbody></table></div>
-      <div class="nfl-card" id="lead-rush"><h3>Rushing yards</h3><p class="nfl-note">Season totals, top 5.</p>
-        <table class="nfl-table" data-source="rushing" data-row-key="Player"><thead><tr><th data-field="Player">Player</th><th data-field="Team">Team</th><th data-field="Yds">Yds</th><th data-field="TD">TD</th></tr></thead><tbody data-draw="lead-rush"></tbody></table></div>
-      <div class="nfl-card" id="lead-rec"><h3>Receiving yards</h3><p class="nfl-note">Season totals, top 5.</p>
-        <table class="nfl-table" data-source="receiving" data-row-key="Player"><thead><tr><th data-field="Player">Player</th><th data-field="Team">Team</th><th data-field="Yds">Yds</th><th data-field="TD">TD</th></tr></thead><tbody data-draw="lead-rec"></tbody></table></div>
-      <div class="nfl-card" id="lead-ppr"><h3>Fantasy points (PPR)</h3><p class="nfl-note">Full-PPR season points, top 5.</p>
-        <table class="nfl-table" data-source="ppr" data-row-key="Player"><thead><tr><th data-field="Player">Player</th><th data-field="Pos">Pos</th><th data-field="PPR">Pts</th><th data-field="PPG">Per game</th></tr></thead><tbody data-draw="lead-ppr"></tbody></table></div>
+      <div class="nfl-card"><h3>Passing yards</h3><p class="nfl-note">Season totals, top 5.</p><div id="lead-pass"></div></div>
+      <div class="nfl-card"><h3>Rushing yards</h3><p class="nfl-note">Season totals, top 5.</p><div id="lead-rush"></div></div>
+      <div class="nfl-card"><h3>Receiving yards</h3><p class="nfl-note">Season totals, top 5.</p><div id="lead-rec"></div></div>
+      <div class="nfl-card"><h3>Fantasy points</h3><p class="nfl-note" id="lead-fan-note">Season points, top 5.</p><div id="lead-fan"></div></div>
     </div>
-
     <h2 class="nfl-h2">Standings</h2>
-    <div class="nfl-grid">
-      <div class="nfl-card" id="afc"><h3>AFC</h3><p class="nfl-note">By division, best record first.</p>
-        <table class="nfl-table" data-source="standings" data-row-key="Team"><thead><tr><th data-field="Team">Team</th><th data-field="Division" class="l">Division</th><th data-field="W">W</th><th data-field="L">L</th><th data-field="WinPct">Win %</th></tr></thead><tbody data-draw="afc"></tbody></table></div>
-      <div class="nfl-card" id="nfc"><h3>NFC</h3><p class="nfl-note">By division, best record first.</p>
-        <table class="nfl-table" data-source="standings" data-row-key="Team"><thead><tr><th data-field="Team">Team</th><th data-field="Division" class="l">Division</th><th data-field="W">W</th><th data-field="L">L</th><th data-field="WinPct">Win %</th></tr></thead><tbody data-draw="nfc"></tbody></table></div>
+    <div class="nfl-grid wide">
+      <div class="nfl-card"><h3>AFC</h3><p class="nfl-note">By division, best record first.</p><div id="afc"></div></div>
+      <div class="nfl-card"><h3>NFC</h3><p class="nfl-note">By division, best record first.</p><div id="nfc"></div></div>
     </div>
   </section>
 
   <!-- PLAYERS -->
   <section class="nfl-page" id="players" hidden>
     <div class="nfl-controls">
-      <input class="nfl-search" type="search" placeholder="Search a player, e.g. Bijan Robinson" aria-label="Search players">
-      <div class="nfl-seg" role="group" aria-label="Stat category">
-        <button data-cat="ppr" aria-pressed="true">Fantasy (PPR)</button>
+      <input class="nfl-search" id="search" type="search" placeholder="Search any player, e.g. Bijan Robinson" aria-label="Search players" autocomplete="off">
+      <div class="nfl-seg" id="cat-seg" role="group" aria-label="Stat category">
+        <button data-cat="fantasy" aria-pressed="true">Fantasy</button>
         <button data-cat="passing" aria-pressed="false">Passing</button>
         <button data-cat="rushing" aria-pressed="false">Rushing</button>
         <button data-cat="receiving" aria-pressed="false">Receiving</button>
+        <button data-cat="kicking" aria-pressed="false">Kicking</button>
+        <button data-cat="defense" aria-pressed="false">Defense</button>
       </div>
-      <select class="dash-select nfl-pos" aria-label="Position">
-        <option value="">All positions</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option>
+      <select class="dash-select" id="pos-filter" aria-label="Position">
+        <option value="">All positions</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>K</option><option value="DST">D/ST</option>
       </select>
-      <select class="dash-select nfl-team" aria-label="Team" data-draw="team-filter" data-source="standings"></select>
+      <select class="dash-select" id="team-filter" aria-label="Team"><option value="">All teams</option></select>
     </div>
-
-    <div class="nfl-card nfl-pcard" id="player-card" data-draw="pcard" data-source="ppr" style="margin-bottom: var(--cds-gap-md)" hidden></div>
-
-    <div class="nfl-card nfl-cat" data-cat="ppr" id="tbl-ppr">
-      <h3>Fantasy points (full PPR)</h3>
-      <p class="nfl-note">1 per catch, 0.1 per rushing or receiving yard, 0.04 per passing yard, 6 per rushing or receiving TD, 4 per passing TD, −2 per interception. Built from the passing, rushing and receiving tables, so a player outside one table's top 50 scores nothing for that part.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="ppr" data-row-key="Player">
-          <thead><tr>
-            <th data-field="Player"><button class="nfl-sort" data-col="Player">Player</button></th>
-            <th data-field="Team"><button class="nfl-sort" data-col="Team">Team</button></th>
-            <th data-field="Pos"><button class="nfl-sort" data-col="Pos">Pos</button></th>
-            <th data-field="GP"><button class="nfl-sort" data-col="GP">GP</button></th>
-            <th data-field="PPR"><button class="nfl-sort" data-col="PPR">Pts</button></th>
-            <th data-field="PPG"><button class="nfl-sort" data-col="PPG">Per game</button></th>
-            <th data-field="PassYds"><button class="nfl-sort" data-col="PassYds">Pass yds</button></th>
-            <th data-field="PassTD"><button class="nfl-sort" data-col="PassTD">Pass TD</button></th>
-            <th data-field="RushYds"><button class="nfl-sort" data-col="RushYds">Rush yds</button></th>
-            <th data-field="RushTD"><button class="nfl-sort" data-col="RushTD">Rush TD</button></th>
-            <th data-field="Rec"><button class="nfl-sort" data-col="Rec">Rec</button></th>
-            <th data-field="RecYds"><button class="nfl-sort" data-col="RecYds">Rec yds</button></th>
-            <th data-field="RecTD"><button class="nfl-sort" data-col="RecTD">Rec TD</button></th>
-          </tr></thead>
-          <tbody data-draw="t-ppr"></tbody>
-        </table>
-      </div>
+    <div class="nfl-card nfl-results" id="search-results" hidden></div>
+    <div class="nfl-card">
+      <h3 id="cat-title">Fantasy points</h3>
+      <p class="nfl-note" id="cat-note"></p>
+      <div class="nfl-scroll tall" id="player-table"></div>
     </div>
+  </section>
 
-    <div class="nfl-card nfl-cat" data-cat="passing" id="tbl-passing" hidden>
-      <h3>Passing</h3>
-      <p class="nfl-note">Top 50 passers by yards. Rating is NFL passer rating.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="passing" data-row-key="Player">
-          <thead><tr>
-            <th data-field="Player"><button class="nfl-sort" data-col="Player">Player</button></th>
-            <th data-field="Team"><button class="nfl-sort" data-col="Team">Team</button></th>
-            <th data-field="GP"><button class="nfl-sort" data-col="GP">GP</button></th>
-            <th data-field="Cmp"><button class="nfl-sort" data-col="Cmp">Cmp</button></th>
-            <th data-field="Att"><button class="nfl-sort" data-col="Att">Att</button></th>
-            <th data-field="CmpPct"><button class="nfl-sort" data-col="CmpPct">Cmp %</button></th>
-            <th data-field="Yds"><button class="nfl-sort" data-col="Yds">Yds</button></th>
-            <th data-field="YPA"><button class="nfl-sort" data-col="YPA">Y/A</button></th>
-            <th data-field="TD"><button class="nfl-sort" data-col="TD">TD</button></th>
-            <th data-field="Int"><button class="nfl-sort" data-col="Int">INT</button></th>
-            <th data-field="Sacks"><button class="nfl-sort" data-col="Sacks">Sacks</button></th>
-            <th data-field="Rating"><button class="nfl-sort" data-col="Rating">Rating</button></th>
-          </tr></thead>
-          <tbody data-draw="t-passing"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="nfl-card nfl-cat" data-cat="rushing" id="tbl-rushing" hidden>
-      <h3>Rushing</h3>
-      <p class="nfl-note">Top 50 rushers by yards.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="rushing" data-row-key="Player">
-          <thead><tr>
-            <th data-field="Player"><button class="nfl-sort" data-col="Player">Player</button></th>
-            <th data-field="Team"><button class="nfl-sort" data-col="Team">Team</button></th>
-            <th data-field="Pos"><button class="nfl-sort" data-col="Pos">Pos</button></th>
-            <th data-field="GP"><button class="nfl-sort" data-col="GP">GP</button></th>
-            <th data-field="Att"><button class="nfl-sort" data-col="Att">Att</button></th>
-            <th data-field="Yds"><button class="nfl-sort" data-col="Yds">Yds</button></th>
-            <th data-field="YPC"><button class="nfl-sort" data-col="YPC">Y/C</button></th>
-            <th data-field="Long"><button class="nfl-sort" data-col="Long">Long</button></th>
-            <th data-field="TD"><button class="nfl-sort" data-col="TD">TD</button></th>
-            <th data-field="Fumbles"><button class="nfl-sort" data-col="Fumbles">Fum</button></th>
-          </tr></thead>
-          <tbody data-draw="t-rushing"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="nfl-card nfl-cat" data-cat="receiving" id="tbl-receiving" hidden>
-      <h3>Receiving</h3>
-      <p class="nfl-note">Top 50 receivers by yards.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="receiving" data-row-key="Player">
-          <thead><tr>
-            <th data-field="Player"><button class="nfl-sort" data-col="Player">Player</button></th>
-            <th data-field="Team"><button class="nfl-sort" data-col="Team">Team</button></th>
-            <th data-field="Pos"><button class="nfl-sort" data-col="Pos">Pos</button></th>
-            <th data-field="GP"><button class="nfl-sort" data-col="GP">GP</button></th>
-            <th data-field="Rec"><button class="nfl-sort" data-col="Rec">Rec</button></th>
-            <th data-field="Targets"><button class="nfl-sort" data-col="Targets">Tgt</button></th>
-            <th data-field="Yds"><button class="nfl-sort" data-col="Yds">Yds</button></th>
-            <th data-field="YPR"><button class="nfl-sort" data-col="YPR">Y/R</button></th>
-            <th data-field="TD"><button class="nfl-sort" data-col="TD">TD</button></th>
-            <th data-field="Long"><button class="nfl-sort" data-col="Long">Long</button></th>
-          </tr></thead>
-          <tbody data-draw="t-receiving"></tbody>
-        </table>
-      </div>
-    </div>
+  <!-- PLAYER PAGE -->
+  <section class="nfl-page" id="player" hidden>
+    <a class="nfl-back" href="#players">← All players</a>
+    <div id="player-body"></div>
   </section>
 
   <!-- COURAGE -->
   <section class="nfl-page" id="courage" hidden>
     <div class="nfl-grid wide">
-      <div class="nfl-card" id="courage-chart">
+      <div class="nfl-card">
         <h3>How often teams go for it, and whether it works</h3>
-        <p class="nfl-note">Fourth-down attempts per game against conversion rate. Dashed lines are the averages of the teams shown, so the top-right corner is bold and paying off.</p>
-        <div class="nfl-chart" data-draw="courage-scatter" data-source="courage"></div>
+        <p class="nfl-note">Fourth-down attempts per game against conversion rate, each dot in team colors. Dashed lines are the averages of the teams shown, so the top-right corner is bold and paying off.</p>
+        <div class="nfl-chart" id="courage-chart"></div>
       </div>
-      <div class="nfl-card" id="courage-table">
+      <div class="nfl-card">
         <h3>Fourth-down aggressiveness by team</h3>
         <p class="nfl-note">Sorted by attempts per game. Teams with fewer than 8 attempts are missing from the source and are listed last.</p>
-        <div class="nfl-scroll">
-          <table class="nfl-table" data-source="courage" data-row-key="Team">
-            <thead><tr><th data-field="Team">Team</th><th data-field="Attempts">Att</th><th data-field="Conversions">Conv</th><th data-field="AttPerGame">Per game</th><th data-field="ConvPct">Conv %</th><th data-field="WinPct">Win %</th><th data-field="Style" class="l">Profile</th></tr></thead>
-            <tbody data-draw="courage-rows"></tbody>
-          </table>
-        </div>
+        <div class="nfl-scroll" id="courage-table"></div>
       </div>
     </div>
     <details>
@@ -285,38 +108,33 @@ th[aria-sort] .nfl-sort { color: var(--color-fg); }
         <dt>Attempts per game</dt><dd>Fourth downs where the offense ran a play instead of punting or kicking.</dd>
         <dt>Profile</dt><dd>Compares each team to the averages of the teams shown on both axes.</dd>
       </dl>
-      <p>Left out: whether each attempt was the right call. A true "should have gone" grade needs play-by-play win-probability data, which no source here provides yet.</p>
+      <p>Left out: whether each attempt was the right call. That needs play-by-play win-probability data.</p>
     </details>
   </section>
 
   <!-- TRAVEL -->
   <section class="nfl-page" id="travel" hidden>
     <div class="nfl-grid wide">
-      <div class="nfl-card" id="fatigue-chart">
-        <h3>Fatigue score, this week</h3>
-        <p class="nfl-note">Higher means a tougher spot: short rest, long trips, time-zone jumps, an early body-clock kickoff, altitude or an overseas game. Off a bye counts as a boost.</p>
-        <div class="nfl-chart" data-draw="fatigue-bars" data-source="fatigue"></div>
+      <div class="nfl-card">
+        <h3 id="fatigue-title">Fatigue score, this week</h3>
+        <p class="nfl-note">Higher means a tougher spot: short rest, long trips, time-zone jumps, an early body-clock kickoff, altitude or an overseas game. Coming off a bye counts as a boost.</p>
+        <div class="nfl-chart" id="fatigue-chart"></div>
       </div>
-      <div class="nfl-card" id="fatigue-edges">
+      <div class="nfl-card">
         <h3>Rest and travel edge by game</h3>
         <p class="nfl-note">The fresher team in each matchup and by how many points. A big edge is a reason to lean on that side's players.</p>
-        <div class="nfl-scroll">
-          <table class="nfl-table" data-source="fatigue_games" data-row-key="GameId">
-            <thead><tr><th data-field="Matchup" class="l">Game</th><th data-field="Kickoff">Kickoff</th><th data-field="AwayScore">Away</th><th data-field="HomeScore">Home</th><th data-field="Edge" class="l">Edge</th></tr></thead>
-            <tbody data-draw="fatigue-games"></tbody>
-          </table>
-        </div>
+        <div class="nfl-scroll" id="fatigue-games"></div>
       </div>
     </div>
-    <div class="nfl-card" id="fatigue-table">
+    <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
+      <h3>Season travel miles</h3>
+      <p class="nfl-note">Round-trip miles to every road and international game this season. Solid is already flown; faded is still to come.</p>
+      <div class="nfl-chart" id="travel-chart"></div>
+    </div>
+    <div class="nfl-card">
       <h3>Every team's spot this week</h3>
       <p class="nfl-note">Body clock is the kickoff time back home. Miles are straight-line from the team's stadium.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="fatigue" data-row-key="Team">
-          <thead><tr><th data-field="Team">Team</th><th data-field="Where" class="l">Game</th><th data-field="Day" class="l">Day</th><th data-field="RestDays">Rest days</th><th data-field="Miles">Miles</th><th data-field="TimeZones">Zones</th><th data-field="BodyClock">Body clock</th><th data-field="Score">Score</th><th data-field="Flags" class="l">Flags</th></tr></thead>
-          <tbody data-draw="fatigue-rows"></tbody>
-        </table>
-      </div>
+      <div class="nfl-scroll" id="fatigue-table"></div>
     </div>
     <details>
       <summary>How the fatigue score works</summary>
@@ -327,74 +145,48 @@ th[aria-sort] .nfl-sort { color: var(--color-fg); }
         <dt>Body clock</dt><dd>+2 when kickoff lands before 11:30 AM on the team's home clock.</dd>
         <dt>Altitude</dt><dd>+1 for a visiting team in a stadium above 5,000 feet.</dd>
       </dl>
-      <p>Left out: season-long cumulative travel, which needs every game's site for the whole year.</p>
     </details>
   </section>
 
   <!-- REFS -->
   <section class="nfl-page" id="refs" hidden>
     <div class="nfl-grid wide">
-      <div class="nfl-card" id="ref-chart">
+      <div class="nfl-card">
         <h3>Flags per game: 2025 to 2026</h3>
         <p class="nfl-note">Grey dot is last season, colored dot is this season. Long lines are crews that changed the most.</p>
-        <div class="nfl-chart" data-draw="ref-dumbbell" data-source="crews"></div>
+        <div class="nfl-chart" id="ref-chart"></div>
       </div>
-      <div class="nfl-card" id="ref-table">
+      <div class="nfl-card">
         <h3>Crew tendencies, 2026</h3>
         <p class="nfl-note">Accepted penalties per game. Home lean is home-team flags minus away-team flags per game, so negative means the road team gets flagged more.</p>
-        <div class="nfl-scroll">
-          <table class="nfl-table" data-source="crews" data-row-key="Referee">
-            <thead><tr><th data-field="Referee">Referee</th><th data-field="Games">Games</th><th data-field="PenPerGame">Per game</th><th data-field="PenPerGame2025">2025</th><th data-field="Change">Change</th><th data-field="YdsPerGame">Yds/g</th><th data-field="HomeLean">Home lean</th></tr></thead>
-            <tbody data-draw="crew-rows"></tbody>
-          </table>
-        </div>
+        <div class="nfl-scroll" id="ref-table"></div>
       </div>
     </div>
-    <div class="nfl-card" id="ref-notes">
+    <div class="nfl-card">
       <h3>Betting tendencies and last week's assignments</h3>
-      <p class="nfl-note">Career against-the-spread records for the home team and notable over/under lean, with the game each crew worked last week.</p>
-      <div class="nfl-scroll">
-        <table class="nfl-table" data-source="referee_notes" data-row-key="Referee">
-          <thead><tr><th data-field="Referee">Referee</th><th data-field="HomeATS" class="l">Home vs spread</th><th data-field="Tendency" class="l">Tendency</th><th data-field="LastWeekGame" class="l">Last week</th></tr></thead>
-          <tbody data-draw="ref-notes"></tbody>
-        </table>
-      </div>
+      <p class="nfl-note">Career against-the-spread records for the home team, notable over/under lean, and the game each crew worked last week.</p>
+      <div class="nfl-scroll" id="ref-notes"></div>
     </div>
   </section>
 
   <!-- WILD CARDS -->
   <section class="nfl-page" id="wild" hidden>
-    <div class="nfl-card" id="td-luck">
+    <div class="nfl-card" style="margin-bottom: var(--cds-gap-md)">
       <h3>Touchdown luck: who's due to cool off or heat up</h3>
       <p class="nfl-note">Expected TDs give each player the league-average touchdown rate on his carries or catches. Big positive gaps tend to shrink, so sell high; big negative gaps are buy-low targets.</p>
-      <div class="nfl-chart short" data-draw="td-chart" data-source="td_luck"></div>
-      <div class="nfl-scroll" style="max-height: 22rem">
-        <table class="nfl-table" data-source="td_luck" data-row-key="Player,Kind">
-          <thead><tr><th data-field="Player">Player</th><th data-field="Kind" class="l">Type</th><th data-field="Team">Team</th><th data-field="Touches">Touches</th><th data-field="TD">TD</th><th data-field="ExpectedTD">Expected</th><th data-field="Gap">Gap</th></tr></thead>
-          <tbody data-draw="td-rows"></tbody>
-        </table>
-      </div>
+      <div class="nfl-chart short" id="td-chart"></div>
+      <div class="nfl-scroll" style="max-height: 22rem" id="td-table"></div>
     </div>
-    <div class="nfl-grid" style="margin-top: var(--cds-gap-md)">
-      <div class="nfl-card" id="sack-magnets">
+    <div class="nfl-grid">
+      <div class="nfl-card">
+        <h3>Usage without payoff</h3>
+        <p class="nfl-note">Players getting real volume (10+ carries and targets a game) but the fewest fantasy points per touch. The usage is sticky; the points often catch up.</p>
+        <div class="nfl-scroll" style="max-height: 24rem" id="usage-table"></div>
+      </div>
+      <div class="nfl-card">
         <h3>Sack magnets</h3>
         <p class="nfl-note">Share of dropbacks that end in a sack, for passers with 100+ attempts. High rates sink fantasy floors and stall drives.</p>
-        <div class="nfl-scroll" style="max-height: 24rem">
-          <table class="nfl-table" data-source="sack_rate" data-row-key="Player">
-            <thead><tr><th data-field="Player">Player</th><th data-field="Team">Team</th><th data-field="Dropbacks">Dropbacks</th><th data-field="Sacks">Sacks</th><th data-field="SackRate">Sack %</th></tr></thead>
-            <tbody data-draw="sack-rows"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="nfl-card" id="one-big-play">
-        <h3>One-big-play wonders</h3>
-        <p class="nfl-note">Share of a receiver's season yards that came on his single longest catch. High shares mean the totals lean on one splash play.</p>
-        <div class="nfl-scroll" style="max-height: 24rem">
-          <table class="nfl-table" data-source="big_plays" data-row-key="Player">
-            <thead><tr><th data-field="Player">Player</th><th data-field="Team">Team</th><th data-field="Yds">Yds</th><th data-field="Long">Long</th><th data-field="LongShare">Long %</th></tr></thead>
-            <tbody data-draw="big-rows"></tbody>
-          </table>
-        </div>
+        <div class="nfl-scroll" style="max-height: 24rem" id="sack-table"></div>
       </div>
     </div>
   </section>
@@ -402,525 +194,15 @@ th[aria-sort] .nfl-sort { color: var(--color-fg); }
   <details>
     <summary>Where the numbers come from</summary>
     <dl>
-      <dt>Player stats</dt><dd>ESPN's 2026 regular-season passing, rushing and receiving tables (top 50 in each).</dd>
-      <dt>Scores, standings and win odds</dt><dd>The sports data feed available to Claude.</dd>
+      <dt>Player stats, schedule, lines, colors</dt><dd>nflverse open data (weekly player stats, schedules with closing betting lines, team colors), refreshed automatically every morning.</dd>
+      <dt>Fantasy scoring</dt><dd>Standard ESPN-style points. Kickers: 3/4/5 by field-goal distance, 1 per extra point, −1 per miss. Team defenses: sacks, takeaways, touchdowns, safeties, blocks and points-allowed tiers.</dd>
       <dt>Fourth downs</dt><dd>StatMuse's 2026 team fourth-down attempts.</dd>
-      <dt>Referees</dt><dd>NFL Penalty Tracker (2025 and 2026 crew totals) and Sharp Football Analysis (betting tendencies and assignments).</dd>
-      <dt>Stadiums</dt><dd>Stadium locations, time zones and elevations are fixed reference values.</dd>
+      <dt>Referees</dt><dd>NFL Penalty Tracker crew totals and Sharp Football Analysis betting tendencies, refreshed Tuesdays.</dd>
     </dl>
   </details>
+  <p class="site-foot" id="built"></p>
 </div>
-
-<script>
-(() => {
-  // ---------- calculations ----------
-  dash.calc('ppr', {
-    inputs: ['passing', 'rushing', 'receiving'],
-    title: 'Fantasy points (PPR)',
-    description: 'Full-PPR points per player, merged from the passing, rushing and receiving tables.',
-    fn: (passing, rushing, receiving) => {
-      const m = new Map();
-      const get = (r) => {
-        if (!m.has(r.Player)) m.set(r.Player, { Player: r.Player, Team: r.Team, Pos: r.Pos || 'QB', GP: 0, PassYds: 0, PassTD: 0, Int: 0, RushYds: 0, RushTD: 0, Rec: 0, RecYds: 0, RecTD: 0 });
-        const p = m.get(r.Player);
-        p.GP = Math.max(p.GP, Number(r.GP));
-        return p;
-      };
-      passing.forEach((r) => { const p = get(r); p.PassYds = Number(r.Yds); p.PassTD = Number(r.TD); p.Int = Number(r.Int); });
-      rushing.forEach((r) => { const p = get(r); p.RushYds = Number(r.Yds); p.RushTD = Number(r.TD); });
-      receiving.forEach((r) => { const p = get(r); p.Rec = Number(r.Rec); p.RecYds = Number(r.Yds); p.RecTD = Number(r.TD); });
-      return [...m.values()].map((p) => {
-        const pts = p.PassYds * 0.04 + p.PassTD * 4 - p.Int * 2 + (p.RushYds + p.RecYds) * 0.1 + (p.RushTD + p.RecTD) * 6 + p.Rec;
-        return { ...p, PPR: Math.round(pts * 10) / 10, PPG: Math.round((pts / p.GP) * 10) / 10 };
-      }).sort((a, b) => b.PPR - a.PPR);
-    },
-  });
-
-  dash.calc('courage', {
-    inputs: ['fourth_downs', 'standings'],
-    title: 'Fourth-down aggressiveness',
-    description: 'Fourth-down attempts per game and conversion rate per team, with record and a profile against the average team.',
-    fn: (fourth_downs, standings) => {
-      const f = new Map(fourth_downs.map((r) => [r.Team, r]));
-      const shown = fourth_downs.map((r) => ({ apg: r.Attempts / r.Games, pct: Number(r.ConvPct) }));
-      const avgA = shown.reduce((s, r) => s + r.apg, 0) / shown.length;
-      const avgP = shown.reduce((s, r) => s + r.pct, 0) / shown.length;
-      return standings.map((s) => {
-        const r = f.get(s.Team);
-        if (!r) return { Team: s.Team, Name: s.Name, Attempts: null, Conversions: null, AttPerGame: null, ConvPct: null, WinPct: s.WinPct, Style: 'Under 8 attempts' };
-        const apg = Math.round((r.Attempts / r.Games) * 100) / 100;
-        const pct = Number(r.ConvPct);
-        const bold = apg >= avgA, good = pct >= avgP;
-        return { Team: s.Team, Name: s.Name, Attempts: r.Attempts, Conversions: r.Conversions, AttPerGame: apg, ConvPct: pct, WinPct: s.WinPct,
-          Style: bold && good ? 'Bold and it works' : bold ? 'Bold, not paying off' : good ? 'Picks spots well' : 'Cautious and shaky' };
-      }).sort((a, b) => (b.AttPerGame ?? -1) - (a.AttPerGame ?? -1));
-    },
-  });
-
-  dash.calc('crews', {
-    inputs: ['referees'],
-    title: 'Referee crew tendencies',
-    description: 'Penalties per game this season and last, the change, and home-minus-away flags per game.',
-    fn: (referees) => referees.map((r) => ({
-      Referee: r.Referee, Games: r.Games, PenPerGame: r.PenPerGame, PenPerGame2025: r.PenPerGame2025,
-      Change: Math.round((r.PenPerGame - r.PenPerGame2025) * 100) / 100, YdsPerGame: r.YdsPerGame,
-      HomeLean: Math.round((r.HomePerGame - r.AwayPerGame) * 100) / 100,
-    })).sort((a, b) => b.PenPerGame - a.PenPerGame),
-  });
-
-  dash.calc('fatigue', {
-    inputs: ['games', 'stadiums'],
-    title: 'Fatigue score this week',
-    description: 'Rest days, miles, time zones, body-clock kickoff and altitude for every team playing in the next week, scored.',
-    fn: (games, stadiums) => {
-      const site = new Map(stadiums.map((s) => [s.Site, s]));
-      const upcoming = games.filter((g) => g.Status === 'Upcoming');
-      const week = Math.min(...upcoming.map((g) => g.Week));
-      const finals = games.filter((g) => g.Status === 'Final');
-      const rad = (d) => (d * Math.PI) / 180;
-      const miles = (a, b) => {
-        const dLat = rad(b.Lat - a.Lat), dLon = rad(b.Lon - a.Lon);
-        const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.Lat)) * Math.cos(rad(b.Lat)) * Math.sin(dLon / 2) ** 2;
-        return 3959 * 2 * Math.asin(Math.sqrt(h));
-      };
-      const hour = (k) => { const [hm, ap] = k.split(' '); const [h, m] = hm.split(':').map(Number); return (h % 12) + (ap === 'PM' ? 12 : 0) + m / 60; };
-      const clock = (x) => { const h = Math.floor(((x % 24) + 24) % 24), m = Math.round((x - Math.floor(x)) * 60); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const out = [];
-      upcoming.filter((g) => g.Week === week).forEach((g) => {
-        [[g.Away, g.Home, true], [g.Home, g.Away, false]].forEach(([team, opp, away]) => {
-          const home = site.get(team), venue = site.get(g.Venue);
-          const prev = finals.filter((x) => (x.Away === team || x.Home === team) && x.Date < g.Date).map((x) => x.Date).sort().pop();
-          const rest = prev ? Math.round((Date.parse(g.Date) - Date.parse(prev)) / 864e5) : null;
-          const mi = Math.round(miles(home, venue));
-          const zones = venue.HoursFromET - home.HoursFromET;
-          const body = hour(g.Kickoff) + home.HoursFromET;
-          const flags = []; let score = 0;
-          if (rest === null || rest >= 10) { flags.push('Off a bye'); score -= 2; }
-          else if (rest <= 4) { flags.push('Short week'); score += 3; }
-          else if (rest <= 6) { flags.push('Six days or less'); score += 1; }
-          score += Math.floor(mi / 1000);
-          if (Math.abs(zones) >= 5) { flags.push('Overseas'); score += 3; }
-          else if (Math.abs(zones) >= 2) { flags.push(`${Math.abs(zones)} time zones`); score += Math.abs(zones) - 1; }
-          if (body < 11.5) { flags.push('Early body clock'); score += 2; }
-          if (venue.ElevationFt >= 5000 && g.Venue !== team) { flags.push('Altitude'); score += 1; }
-          out.push({ Team: team, Opp: opp, GameId: g.GameId, Where: (away ? '@ ' : 'vs ') + opp + (g.Venue !== g.Home ? ' (' + venue.City + ')' : ''),
-            Day: days[new Date(g.Date + 'T12:00:00Z').getUTCDay()], Kickoff: g.Kickoff, RestDays: rest, Miles: mi, TimeZones: zones,
-            BodyClock: clock(body), Score: score, Flags: flags.join(' · ') || 'None' });
-        });
-      });
-      return out.sort((a, b) => b.Score - a.Score || b.Miles - a.Miles);
-    },
-  });
-
-  dash.calc('fatigue_games', {
-    inputs: ['fatigue', 'games'],
-    title: 'Rest and travel edge by game',
-    description: 'Each upcoming game with both teams’ fatigue scores and which side has the edge.',
-    fn: (fatigue, games) => {
-      const by = new Map(fatigue.map((r) => [r.Team, r]));
-      return games.filter((g) => fatigue.some((f) => f.GameId === g.GameId)).map((g) => {
-        const a = by.get(g.Away).Score, h = by.get(g.Home).Score, d = a - h;
-        return { GameId: g.GameId, Matchup: `${g.Away} @ ${g.Home}`, Kickoff: g.Kickoff, AwayScore: a, HomeScore: h,
-          Edge: d === 0 ? 'Even' : `${d > 0 ? g.Home : g.Away} by ${Math.abs(d)}` };
-      }).sort((x, y) => Math.abs(y.AwayScore - y.HomeScore) - Math.abs(x.AwayScore - x.HomeScore));
-    },
-  });
-
-  dash.calc('td_luck', {
-    inputs: ['rushing', 'receiving'],
-    title: 'Touchdown luck',
-    description: 'Actual touchdowns against the league-average touchdown rate on each player’s carries or catches.',
-    fn: (rushing, receiving) => {
-      const rate = (rows, n) => rows.reduce((s, r) => s + Number(r.TD), 0) / rows.reduce((s, r) => s + Number(r[n]), 0);
-      const rr = rate(rushing, 'Att'), cr = rate(receiving, 'Rec');
-      const row = (r, kind, n, k) => {
-        const exp = Math.round(Number(r[n]) * k * 10) / 10;
-        return { Player: r.Player, Kind: kind, Team: r.Team, Touches: Number(r[n]), TD: Number(r.TD), ExpectedTD: exp, Gap: Math.round((Number(r.TD) - exp) * 10) / 10 };
-      };
-      return [...rushing.map((r) => row(r, 'Rushing', 'Att', rr)), ...receiving.map((r) => row(r, 'Receiving', 'Rec', cr))].sort((a, b) => b.Gap - a.Gap);
-    },
-  });
-
-  dash.calc('sack_rate', {
-    inputs: ['passing'],
-    title: 'Sack rate',
-    description: 'Sacks as a share of dropbacks (attempts plus sacks), passers with 100 or more attempts.',
-    fn: (passing) => passing.filter((r) => Number(r.Att) >= 100).map((r) => {
-      const db = Number(r.Att) + Number(r.Sacks);
-      return { Player: r.Player, Team: r.Team, Dropbacks: db, Sacks: Number(r.Sacks), SackRate: Math.round((Number(r.Sacks) / db) * 1000) / 10 };
-    }).sort((a, b) => b.SackRate - a.SackRate),
-  });
-
-  dash.calc('big_plays', {
-    inputs: ['receiving'],
-    title: 'One-big-play share',
-    description: 'Longest catch as a share of season receiving yards.',
-    fn: (receiving) => receiving.map((r) => ({ Player: r.Player, Team: r.Team, Yds: Number(r.Yds), Long: Number(r.Long), LongShare: Math.round((Number(r.Long) / Number(r.Yds)) * 1000) / 10 }))
-      .sort((a, b) => b.LongShare - a.LongShare),
-  });
-
-  dash.calc('headlines', {
-    inputs: ['passing', 'rushing', 'receiving', 'ppr', 'courage', 'crews', 'fatigue', 'games'],
-    title: 'Headline figures',
-    description: 'The leader in each category and this week’s first game, most fatigued team and flag-happiest crew.',
-    fn: (passing, rushing, receiving, ppr, courage, crews, fatigue, games) => {
-      const top = (rows, f) => rows.reduce((b, r) => (Number(r[f]) > Number(b[f]) ? r : b), rows[0]);
-      const p = top(passing, 'Yds'), r = top(rushing, 'Yds'), c = top(receiving, 'Yds');
-      const finals = games.filter((g) => g.Status === 'Final'), up = games.filter((g) => g.Status === 'Upcoming');
-      const next = Math.min(...up.map((g) => g.Week));
-      const first = up.filter((g) => g.Week === next).sort((a, b) => a.Date.localeCompare(b.Date))[0];
-      return [{
-        ThroughWeek: Math.max(...finals.map((g) => g.Week)), NextWeek: next, NextGame: `${first.Away} at ${first.Home}`,
-        TopPasser: `${p.Player}, ${p.Team}`, TopPasserYds: Number(p.Yds),
-        TopRusher: `${r.Player}, ${r.Team}`, TopRusherYds: Number(r.Yds),
-        TopReceiver: `${c.Player}, ${c.Team}`, TopReceiverYds: Number(c.Yds),
-        TopPPRPlayer: `${ppr[0].Player}, ${ppr[0].Pos}`, TopPPR: ppr[0].PPR,
-        BoldestTeam: courage[0].Name, BoldestRate: courage[0].AttPerGame,
-        FlagCrew: crews[0].Referee, FlagCrewRate: crews[0].PenPerGame,
-        MostFatigued: `${fatigue[0].Team} (${fatigue[0].Flags.toLowerCase()})`,
-      }];
-    },
-  });
-
-  // ---------- helpers ----------
-  const fmtN = d3.format(',');
-  const show = (v, f) => (v === null || v === undefined || v === '' ? '—' : f ? f(v) : String(v));
-  const data = (id) => dash.data(id);
-  const okRows = (id) => (data(id).status === 'ok' ? data(id).data : null);
-  const one = (id, field, f) => (el) => {
-    const r = okRows(id);
-    el.textContent = r && r[0] ? show(r[0][field], f) : '—';
-  };
-  const failLine = (el, id) => {
-    if (data(id).status !== 'error') return false;
-    el.replaceChildren();
-    const d = document.createElement('div');
-    d.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;min-height:inherit;height:100%;color:var(--color-fg-muted);font-size:var(--cds-font-size-caption)';
-    const dot = document.createElement('span');
-    dot.style.cssText = 'width:.375rem;height:.375rem;border-radius:50%;background:var(--color-bad)';
-    d.append(dot, 'Failed to load');
-    el.append(d);
-    return true;
-  };
-  const fill = (tbody, rows, cols, keyOf) => {
-    tbody.replaceChildren(...rows.map((r) => {
-      const tr = document.createElement('tr');
-      if (keyOf) tr.dataset.key = keyOf(r);
-      cols.forEach((c) => {
-        const td = document.createElement('td');
-        const v = r[c.f];
-        td.textContent = show(v, c.fmt);
-        if (c.cls) td.className = typeof c.cls === 'function' ? c.cls(v, r) : c.cls;
-        tr.append(td);
-      });
-      return tr;
-    }));
-  };
-  const C = (f, fmt, cls) => ({ f, fmt, cls });
-  const pct1 = (v) => `${Number(v).toFixed(1)}`;
-  const signed = (v) => (v > 0 ? '+' : '') + v;
-
-  // ---------- header and tiles ----------
-  dash.draw('through', one('headlines', 'ThroughWeek'));
-  dash.draw('nextweek', one('headlines', 'NextWeek'));
-  dash.draw('nextgame', one('headlines', 'NextGame'));
-  dash.draw('tired', one('headlines', 'MostFatigued'));
-  dash.draw('flagcrew', one('headlines', 'FlagCrew'));
-  dash.draw('h-py', one('headlines', 'TopPasserYds', fmtN));
-  dash.draw('h-pn', one('headlines', 'TopPasser'));
-  dash.draw('h-ry', one('headlines', 'TopRusherYds', fmtN));
-  dash.draw('h-rn', one('headlines', 'TopRusher'));
-  dash.draw('h-cy', one('headlines', 'TopReceiverYds', fmtN));
-  dash.draw('h-cn', one('headlines', 'TopReceiver'));
-  dash.draw('h-fy', one('headlines', 'TopPPR'));
-  dash.draw('h-fn', one('headlines', 'TopPPRPlayer'));
-  dash.draw('h-4y', one('headlines', 'BoldestRate'));
-  dash.draw('h-4n', one('headlines', 'BoldestTeam'));
-  dash.draw('h-ry2', one('headlines', 'FlagCrewRate'));
-  dash.draw('h-rn2', one('headlines', 'FlagCrew'));
-
-  // ---------- home tables ----------
-  dash.draw('upcoming', (tb) => {
-    const g = okRows('games');
-    if (!g) return tb.replaceChildren();
-    const next = Math.min(...g.filter((x) => x.Status === 'Upcoming').map((x) => x.Week));
-    const rows = g.filter((x) => x.Week === next);
-    const fav = (v, r, side) => {
-      const o = side === 'a' ? r.HomeWinProb : r.AwayWinProb;
-      return v !== null && o !== null && v > o ? 'nfl-good' : '';
-    };
-    fill(tb, rows, [C('Day'), C('Kickoff'), C('Away', null, 'l'), C('AwayWinProb', null, (v, r) => fav(v, r, 'a')), C('Home', null, 'l'), C('HomeWinProb', null, (v, r) => fav(v, r, 'h')), C('Window', null, 'l nfl-hide-sm')], (r) => r.GameId);
-  });
-  dash.draw('results', (tb) => {
-    const g = okRows('games');
-    if (!g) return tb.replaceChildren();
-    const last = Math.max(...g.filter((x) => x.Status === 'Final').map((x) => x.Week));
-    const won = (side) => (v, r) => ((side === 'a' ? r.AwayScore > r.HomeScore : r.HomeScore > r.AwayScore) ? 'nfl-good' : '');
-    fill(tb, g.filter((x) => x.Week === last), [C('Away', null, 'l'), C('AwayScore', null, won('a')), C('Home', null, 'l'), C('HomeScore', null, won('h')), C('Window', null, 'l nfl-hide-sm')], (r) => r.GameId);
-  });
-  const leaders = (name, id, cols, sortF) => dash.draw(name, (tb) => {
-    const r = okRows(id);
-    if (!r) return tb.replaceChildren();
-    fill(tb, [...r].sort((a, b) => Number(b[sortF]) - Number(a[sortF])).slice(0, 5), cols);
-  });
-  leaders('lead-pass', 'passing', [C('Player'), C('Team'), C('Yds', fmtN), C('TD')], 'Yds');
-  leaders('lead-rush', 'rushing', [C('Player'), C('Team'), C('Yds', fmtN), C('TD')], 'Yds');
-  leaders('lead-rec', 'receiving', [C('Player'), C('Team'), C('Yds', fmtN), C('TD')], 'Yds');
-  leaders('lead-ppr', 'ppr', [C('Player'), C('Pos'), C('PPR'), C('PPG')], 'PPR');
-  ['afc', 'nfc'].forEach((conf) => dash.draw(conf, (tb) => {
-    const r = okRows('standings');
-    if (!r) return tb.replaceChildren();
-    const rows = r.filter((x) => x.Conf === conf.toUpperCase()).sort((a, b) => a.Division.localeCompare(b.Division) || b.WinPct - a.WinPct || b.W - a.W);
-    fill(tb, rows, [C('Team'), C('Division', null, 'l'), C('W'), C('L'), C('WinPct', (v) => Number(v).toFixed(3))]);
-  }));
-
-  // ---------- players ----------
-  const state = { cat: 'ppr', q: '', pos: '', team: '', sort: {} };
-  const catCols = {
-    ppr: [C('Player'), C('Team'), C('Pos'), C('GP'), C('PPR'), C('PPG'), C('PassYds', fmtN), C('PassTD'), C('RushYds', fmtN), C('RushTD'), C('Rec'), C('RecYds', fmtN), C('RecTD')],
-    passing: [C('Player'), C('Team'), C('GP'), C('Cmp'), C('Att'), C('CmpPct'), C('Yds', fmtN), C('YPA'), C('TD'), C('Int'), C('Sacks'), C('Rating')],
-    rushing: [C('Player'), C('Team'), C('Pos'), C('GP'), C('Att'), C('Yds', fmtN), C('YPC'), C('Long'), C('TD'), C('Fumbles')],
-    receiving: [C('Player'), C('Team'), C('Pos'), C('GP'), C('Rec'), C('Targets'), C('Yds', fmtN), C('YPR'), C('TD'), C('Long')],
-  };
-  const defaultSort = { ppr: 'PPR', passing: 'Yds', rushing: 'Yds', receiving: 'Yds' };
-  const matches = (r) => (!state.q || r.Player.toLowerCase().includes(state.q)) && (!state.pos || (r.Pos || 'QB') === state.pos) && (!state.team || r.Team === state.team);
-  Object.keys(catCols).forEach((cat) => {
-    const id = cat;
-    dash.draw('t-' + cat, (tb) => {
-      const r = okRows(id);
-      if (!r) return tb.replaceChildren();
-      const s = state.sort[cat] || { col: defaultSort[cat], dir: -1 };
-      const rows = r.filter(matches).sort((a, b) => {
-        const x = a[s.col], y = b[s.col];
-        if (typeof x === 'number' || typeof y === 'number') return s.dir * ((Number(x) || 0) - (Number(y) || 0));
-        return s.dir * String(x).localeCompare(String(y));
-      });
-      fill(tb, rows, catCols[cat]);
-    });
-  });
-  dash.draw('team-filter', (sel) => {
-    const r = okRows('standings') || [];
-    sel.replaceChildren(new Option('All teams', ''), ...[...r].sort((a, b) => a.Team.localeCompare(b.Team)).map((t) => new Option(`${t.Team} · ${t.Name}`, t.Team)));
-    sel.value = state.team;
-  });
-  dash.draw('pcard', (el) => {
-    el.replaceChildren();
-    const r = okRows('ppr');
-    if (!r || !state.q) return;
-    const hits = r.filter((p) => p.Player.toLowerCase().includes(state.q));
-    if (!hits.length) {
-      const p = document.createElement('p'); p.className = 'nfl-note'; p.style.margin = '0';
-      p.textContent = 'No player in the top-50 tables matches that search.';
-      return el.append(p);
-    }
-    const p = hits[0];
-    const name = document.createElement('div'); name.className = 'nfl-pc-name'; name.textContent = p.Player;
-    const sub = document.createElement('div'); sub.className = 'nfl-note'; sub.style.margin = '0';
-    sub.textContent = `${p.Pos} · ${p.Team} · ${p.GP} games` + (hits.length > 1 ? ` · ${hits.length - 1} more match${hits.length > 2 ? 'es' : ''} in the table below` : '');
-    const grid = document.createElement('div'); grid.className = 'nfl-pc';
-    const add = (k, v) => { const d = document.createElement('div'); const a = document.createElement('div'); a.className = 'k'; a.textContent = k; const b = document.createElement('div'); b.className = 'v'; b.textContent = v; d.append(a, b); grid.append(d); };
-    add('PPR points', show(p.PPR)); add('Per game', show(p.PPG));
-    if (p.PassYds) { add('Pass yards', fmtN(p.PassYds)); add('Pass TD / INT', `${p.PassTD} / ${p.Int}`); }
-    if (p.RushYds) { add('Rush yards', fmtN(p.RushYds)); add('Rush TD', show(p.RushTD)); }
-    if (p.Rec) { add('Catches', show(p.Rec)); add('Rec yards', fmtN(p.RecYds)); add('Rec TD', show(p.RecTD)); }
-    el.append(name, sub, grid);
-  });
-
-  const redrawPlayers = () => { Object.keys(catCols).forEach((c) => dash.draw('t-' + c)); dash.draw('pcard'); };
-  document.querySelectorAll('.nfl-search').forEach((inp) => inp.addEventListener('input', () => {
-    state.q = inp.value.trim().toLowerCase();
-    document.querySelectorAll('.nfl-pcard').forEach((c) => { c.hidden = !state.q; });
-    redrawPlayers();
-  }));
-  document.querySelectorAll('.nfl-pos').forEach((s) => s.addEventListener('change', () => { state.pos = s.value; redrawPlayers(); }));
-  document.querySelectorAll('.nfl-team').forEach((s) => s.addEventListener('change', () => { state.team = s.value; redrawPlayers(); }));
-  document.querySelectorAll('.nfl-seg button').forEach((b) => b.addEventListener('click', () => {
-    state.cat = b.dataset.cat;
-    document.querySelectorAll('.nfl-seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    document.querySelectorAll('.nfl-cat').forEach((c) => { c.hidden = c.dataset.cat !== state.cat; });
-    dash.draw('t-' + state.cat);
-  }));
-  document.querySelectorAll('.nfl-cat').forEach((card) => card.querySelectorAll('.nfl-sort').forEach((btn) => btn.addEventListener('click', () => {
-    const cat = card.dataset.cat, col = btn.dataset.col;
-    const cur = state.sort[cat] || { col: defaultSort[cat], dir: -1 };
-    state.sort[cat] = { col, dir: cur.col === col ? -cur.dir : (col === 'Player' || col === 'Team' || col === 'Pos' ? 1 : -1) };
-    card.querySelectorAll('th').forEach((th) => th.removeAttribute('aria-sort'));
-    btn.closest('th').setAttribute('aria-sort', state.sort[cat].dir > 0 ? 'ascending' : 'descending');
-    dash.draw('t-' + cat);
-  })));
-
-  // ---------- tooltip helper ----------
-  const tip = (box) => {
-    const t = document.createElement('div'); t.className = 'nfl-tip'; t.hidden = true; box.append(t);
-    return {
-      show(ev, title, line) {
-        t.replaceChildren();
-        const a = document.createElement('div'); a.className = 't'; a.textContent = title;
-        const b = document.createElement('div'); b.textContent = line;
-        t.append(a, b); t.hidden = false;
-        const r = box.getBoundingClientRect();
-        let x = ev.clientX - r.left + 12, y = ev.clientY - r.top + 12;
-        x = Math.min(x, r.width - t.offsetWidth - 4); y = Math.min(y, r.height - t.offsetHeight - 4);
-        t.style.left = Math.max(4, x) + 'px'; t.style.top = Math.max(4, y) + 'px';
-      },
-      hide() { t.hidden = true; },
-    };
-  };
-  const textW = (svg, s, cls) => { const t = svg.append('text').attr('class', cls || '').style('font-size', 'var(--cds-font-size-caption)').text(s); const w = t.node().getComputedTextLength(); t.remove(); return w; };
-
-  // ---------- courage ----------
-  dash.draw('courage-scatter', (el) => {
-    el.replaceChildren();
-    if (failLine(el, 'courage')) return;
-    const r = okRows('courage');
-    if (!r) return;
-    const pts = r.filter((d) => d.AttPerGame !== null);
-    const W = el.clientWidth || 600, H = 352, m = { t: 12, r: 16, b: 40, l: 44 };
-    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block').style('overflow', 'visible');
-    const x = d3.scaleLinear(d3.extent(pts, (d) => d.AttPerGame), [m.l, W - m.r]).nice();
-    const y = d3.scaleLinear([0, 100], [H - m.b, m.t]);
-    const g = svg.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    y.ticks(5).forEach((v) => { g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', 'var(--cds-chart-grid)'); g.append('text').attr('x', m.l - 6).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').text(v + '%'); });
-    x.ticks(Math.max(3, Math.floor(W / 90))).forEach((v) => g.append('text').attr('x', x(v)).attr('y', H - m.b + 16).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').text(v.toFixed(1)));
-    g.append('text').attr('x', (m.l + W - m.r) / 2).attr('y', H - 4).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').text('Fourth-down attempts per game');
-    const ax = d3.mean(pts, (d) => d.AttPerGame), ay = d3.mean(pts, (d) => d.ConvPct);
-    g.append('line').attr('x1', x(ax)).attr('x2', x(ax)).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 4');
-    g.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(ay)).attr('y2', y(ay)).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 4');
-    const tp = tip(el);
-    const col = (d) => (d.Style === 'Bold and it works' ? dash.colors[0] : d.Style === 'Bold, not paying off' ? 'var(--cds-chart-status-critical)' : 'var(--cds-chart-muted)');
-    const nodes = g.selectAll('g.pt').data(pts).join('g').attr('class', 'pt').attr('transform', (d) => `translate(${x(d.AttPerGame)},${y(d.ConvPct)})`);
-    nodes.append('circle').attr('r', 6).attr('fill', col).attr('fill-opacity', 0.85);
-    nodes.append('text').attr('x', 8).attr('dy', '0.32em').attr('fill', 'var(--color-fg)').text((d) => d.Team);
-    nodes.on('pointermove', (ev, d) => tp.show(ev, d.Name, `${d.AttPerGame} per game · ${d.ConvPct}% converted · ${d.Style}`)).on('pointerleave', () => tp.hide());
-  });
-  dash.draw('courage-rows', (tb) => {
-    const r = okRows('courage');
-    if (!r) return tb.replaceChildren();
-    const sty = (v) => (v === 'Bold and it works' ? 'l nfl-good' : v === 'Bold, not paying off' ? 'l nfl-bad' : 'l');
-    fill(tb, r, [C('Team'), C('Attempts'), C('Conversions'), C('AttPerGame'), C('ConvPct'), C('WinPct', (v) => Number(v).toFixed(3)), C('Style', null, sty)]);
-  });
-
-  // ---------- fatigue ----------
-  dash.draw('fatigue-bars', (el) => {
-    el.replaceChildren();
-    if (failLine(el, 'fatigue')) return;
-    const r = okRows('fatigue');
-    if (!r) return;
-    const W = el.clientWidth || 600, bh = 18, gap = 6, m = { t: 4, r: 28, b: 4, l: 48 };
-    const H = m.t + m.b + r.length * (bh + gap);
-    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
-    const lo = Math.min(0, d3.min(r, (d) => d.Score)), hi = Math.max(1, d3.max(r, (d) => d.Score));
-    const x = d3.scaleLinear([lo, hi], [m.l, W - m.r]);
-    const g = svg.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
-    const tp = tip(el);
-    const row = g.selectAll('g.r').data(r).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${m.t + i * (bh + gap)})`);
-    row.append('text').attr('x', m.l - 8).attr('y', bh / 2).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Team);
-    row.append('rect').attr('x', (d) => x(Math.min(0, d.Score))).attr('width', (d) => Math.max(2, Math.abs(x(d.Score) - x(0)))).attr('height', bh).attr('rx', 3)
-      .attr('fill', (d) => (d.Score >= 4 ? 'var(--cds-chart-status-critical)' : d.Score < 0 ? dash.colors[1] : dash.colors[0]));
-    row.append('text').attr('x', (d) => (d.Score >= 0 ? x(d.Score) + 6 : x(0) + 6)).attr('y', bh / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => d.Score);
-    row.on('pointermove', (ev, d) => tp.show(ev, `${d.Team} ${d.Where}`, d.Flags)).on('pointerleave', () => tp.hide());
-    el.style.minHeight = H + 'px';
-  });
-  dash.draw('fatigue-games', (tb) => {
-    const r = okRows('fatigue_games');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Matchup', null, 'l'), C('Kickoff'), C('AwayScore'), C('HomeScore'), C('Edge', null, (v) => (v === 'Even' ? 'l' : 'l nfl-good'))], (x) => x.GameId);
-  });
-  dash.draw('fatigue-rows', (tb) => {
-    const r = okRows('fatigue');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Team'), C('Where', null, 'l'), C('Day', null, 'l'), C('RestDays'), C('Miles', fmtN), C('TimeZones', signed), C('BodyClock'), C('Score', null, (v) => (v >= 4 ? 'nfl-bad' : v < 0 ? 'nfl-good' : '')), C('Flags', null, 'l')]);
-  });
-
-  // ---------- refs ----------
-  dash.draw('ref-dumbbell', (el) => {
-    el.replaceChildren();
-    if (failLine(el, 'crews')) return;
-    const r = okRows('crews');
-    if (!r) return;
-    const W = el.clientWidth || 600, rh = 22, m = { t: 22, r: 40, b: 8, l: 0 };
-    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${m.t + m.b + r.length * rh}`).style('display', 'block');
-    const lw = d3.max(r, (d) => textW(svg, d.Referee)) + 10;
-    const x = d3.scaleLinear([Math.floor(d3.min(r, (d) => Math.min(d.PenPerGame, d.PenPerGame2025))) - 0.5, Math.ceil(d3.max(r, (d) => Math.max(d.PenPerGame, d.PenPerGame2025))) + 0.5], [lw, W - m.r]);
-    const g = svg.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    x.ticks(Math.max(3, Math.floor((W - lw) / 70))).forEach((v) => { g.append('line').attr('x1', x(v)).attr('x2', x(v)).attr('y1', m.t - 4).attr('y2', m.t + r.length * rh).attr('stroke', 'var(--cds-chart-grid)'); g.append('text').attr('x', x(v)).attr('y', 12).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').text(v); });
-    const tp = tip(el);
-    const row = g.selectAll('g.r').data(r).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${m.t + i * rh + rh / 2})`);
-    row.append('text').attr('x', lw - 10).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Referee);
-    row.append('line').attr('x1', (d) => x(d.PenPerGame2025)).attr('x2', (d) => x(d.PenPerGame)).attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 2).attr('stroke-linecap', 'round');
-    row.append('circle').attr('cx', (d) => x(d.PenPerGame2025)).attr('r', 4.5).attr('fill', 'var(--cds-chart-muted)');
-    row.append('circle').attr('cx', (d) => x(d.PenPerGame)).attr('r', 5.5).attr('fill', (d) => (d.Change >= 3 ? 'var(--cds-chart-status-critical)' : dash.colors[0]));
-    row.on('pointermove', (ev, d) => tp.show(ev, d.Referee, `${d.PenPerGame2025} in 2025 → ${d.PenPerGame} in 2026 (${signed(d.Change)})`)).on('pointerleave', () => tp.hide());
-  });
-  dash.draw('crew-rows', (tb) => {
-    const r = okRows('crews');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Referee'), C('Games'), C('PenPerGame'), C('PenPerGame2025'), C('Change', signed, (v) => (v >= 3 ? 'nfl-bad' : v < 0 ? 'nfl-good' : '')), C('YdsPerGame'), C('HomeLean', signed)]);
-  });
-  dash.draw('ref-notes', (tb) => {
-    const r = okRows('referee_notes');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Referee'), C('HomeATS', null, 'l'), C('Tendency', null, 'l'), C('LastWeekGame', null, 'l')]);
-  });
-
-  // ---------- wild cards ----------
-  dash.draw('td-chart', (el) => {
-    el.replaceChildren();
-    if (failLine(el, 'td_luck')) return;
-    const r = okRows('td_luck');
-    if (!r) return;
-    const pick = [...r.slice(0, 6), ...r.slice(-6)];
-    const W = el.clientWidth || 600, rh = 20, m = { t: 6, r: 36, b: 6 };
-    const H = m.t + m.b + pick.length * rh;
-    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('display', 'block');
-    const lw = Math.min(W * 0.4, d3.max(pick, (d) => textW(svg, d.Player)) + 12);
-    const ext = d3.max(pick, (d) => Math.abs(d.Gap)) || 1;
-    const x = d3.scaleLinear([-ext, ext], [lw, W - m.r]);
-    const g = svg.append('g').style('font-size', 'var(--cds-font-size-caption)');
-    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', H).attr('stroke', 'var(--cds-chart-axis)');
-    const tp = tip(el);
-    const row = g.selectAll('g.r').data(pick).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${m.t + i * rh})`);
-    row.append('text').attr('x', lw - 8).attr('y', rh / 2).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').text((d) => d.Player);
-    row.append('rect').attr('x', (d) => x(Math.min(0, d.Gap))).attr('y', 3).attr('height', rh - 6).attr('rx', 3).attr('width', (d) => Math.max(2, Math.abs(x(d.Gap) - x(0))))
-      .attr('fill', (d) => (d.Gap > 0 ? 'var(--cds-chart-status-critical)' : dash.colors[1]));
-    row.append('text').attr('x', (d) => (d.Gap >= 0 ? x(d.Gap) + 4 : x(0) + 4)).attr('y', rh / 2).attr('dy', '0.32em').attr('fill', 'var(--color-fg-muted)').text((d) => signed(d.Gap));
-    row.on('pointermove', (ev, d) => tp.show(ev, `${d.Player} · ${d.Kind}`, `${d.TD} TD vs ${d.ExpectedTD} expected on ${d.Touches} touches`)).on('pointerleave', () => tp.hide());
-    el.style.minHeight = H + 'px';
-  });
-  dash.draw('td-rows', (tb) => {
-    const r = okRows('td_luck');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Player'), C('Kind', null, 'l'), C('Team'), C('Touches'), C('TD'), C('ExpectedTD'), C('Gap', signed, (v) => (v >= 2 ? 'nfl-bad' : v <= -2 ? 'nfl-good' : ''))], (x) => `${encodeURIComponent(x.Player)},${encodeURIComponent(x.Kind)}`);
-  });
-  dash.draw('sack-rows', (tb) => {
-    const r = okRows('sack_rate');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Player'), C('Team'), C('Dropbacks'), C('Sacks'), C('SackRate', pct1, (v) => (v >= 9 ? 'nfl-bad' : ''))]);
-  });
-  dash.draw('big-rows', (tb) => {
-    const r = okRows('big_plays');
-    if (!r) return tb.replaceChildren();
-    fill(tb, r, [C('Player'), C('Team'), C('Yds', fmtN), C('Long'), C('LongShare', pct1, (v) => (v >= 15 ? 'nfl-warn' : ''))]);
-  });
-
-  // ---------- tabs ----------
-  const tabs = ['home', 'players', 'courage', 'travel', 'refs', 'wild'];
-  const open = (name) => {
-    if (!tabs.includes(name)) name = 'home';
-    document.querySelectorAll('.nfl-page').forEach((p) => { p.hidden = p.id !== name; });
-    document.querySelectorAll('.nfl-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
-    dash.setLink(name);
-  };
-  document.querySelectorAll('.nfl-tab').forEach((b) => b.addEventListener('click', () => open(b.dataset.tab)));
-  const start = location.hash.slice(1);
-  if (tabs.includes(start)) open(start);
-  window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (tabs.includes(h)) open(h); });
-})();
-</script>
-
-<p class="site-foot">Data refreshes every Tuesday. Built with Claude.</p>
 </div>
+<script src="assets/app.js"></script>
 </body>
 </html>
