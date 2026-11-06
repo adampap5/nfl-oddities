@@ -183,3 +183,8 @@ th[aria-sort="ascending"] .nfl-sort::after { content: " ↑"; }
   .nfl-card { padding: 18px 16px 14px; border-radius: 20px; }
 }
 .side-scoring-mobile { display: none; }
+
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.nfl-theme { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--color-panel); color: var(--color-fg); display: grid; place-items: center; cursor: pointer; }
+.nfl-theme svg { width: 18px; height: 18px; }
+.nfl-theme:hover { background: var(--row-hover); }

@@ -6,10 +6,11 @@
 <title>NFL Oddities</title>
 <meta name="description" content="2026 NFL stats for every player, fantasy points, player trends, fourth-down courage, travel fatigue and referee crew tendencies.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+<script>try { if (localStorage.getItem('nfl-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/theme.css?v=1fa02c82e9">
-<link rel="stylesheet" href="assets/app.css?v=3a392c3312">
+<link rel="stylesheet" href="assets/theme.css?v=52c5b66468">
+<link rel="stylesheet" href="assets/app.css?v=373ca3cfa2">
 <script src="assets/d3.min.js?v=6d64bd2f09"></script>
 </head>
 <body>
@@ -34,9 +35,12 @@
   <main class="main">
   <header class="topbar">
     <div><h1 id="page-title">Dashboard</h1><span class="nfl-asof" id="asof">Loading…</span></div>
+    <div class="topbar-right">
+    <button class="nfl-theme" id="theme-toggle" type="button" aria-label="Switch to dark mode" title="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
     <div class="nfl-seg nfl-scoring" role="group" aria-label="Fantasy scoring">
       <button data-scoring="PPR" aria-pressed="true">PPR</button>
       <button data-scoring="Half" aria-pressed="false">Half-PPR</button>
+    </div>
     </div>
   </header>
   <p class="nfl-take" id="takeaway"></p>
@@ -244,6 +248,6 @@
   </main>
 </div>
 </div>
-<script src="assets/app.js?v=c158ace915"></script>
+<script src="assets/app.js?v=06ebf8f920"></script>
 </body>
 </html>
